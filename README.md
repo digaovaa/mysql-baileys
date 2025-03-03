@@ -149,3 +149,12 @@ startSock('session2')
 startSock('session3')
 startSock('session4')
 ```
+
+## Memory Management
+
+WhatsApp sessions can accumulate large amounts of sender key data over time. This package includes automatic memory management features:
+
+### Manual Cleanup
+
+You can manually clean sender key memory with:
+```

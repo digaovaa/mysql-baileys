@@ -106,12 +106,17 @@ async function prepareStatements(pool: Pool, tableName: string, session: string)
             insert: await pool.prepare(`INSERT INTO \`${safeTableName}\` (session, id, value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = ?`),
             delete: await pool.prepare(`DELETE FROM \`${safeTableName}\` WHERE id = ? AND session = ?`),
             clearAll: await pool.prepare(`DELETE FROM \`${safeTableName}\` WHERE id != 'creds' AND session = ?`),
-            removeAll: await pool.prepare(`DELETE FROM \`${safeTableName}\` WHERE session = ?`)
+            removeAll: await pool.prepare(`DELETE FROM \`${safeTableName}\` WHERE session = ?`),
+            // Add new prepared statement for clearing sender-key-memory
+            clearSenderKeyMemory: await pool.prepare(`DELETE FROM \`${safeTableName}\` WHERE id LIKE 'sender-key-memory-%' AND session = ?`)
         };
     }
     
     return preparedStatements[key];
 }
+
+// Track cleanup intervals to avoid memory leaks
+const cleanupIntervals: Record<string, NodeJS.Timeout> = {};
 
 export const useMySQLAuthState = async(config: MySQLConfig): Promise<{ 
     state: AuthenticationState, 
@@ -119,7 +124,8 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
     clear: () => Promise<void>, 
     removeCreds: () => Promise<void>, 
     query: (sql: string, values: any[]) => Promise<sqlData>,
-    closeConnections: () => Promise<void>
+    closeConnections: () => Promise<void>,
+    clearSenderKeyMemory: () => Promise<sqlData> // Add the new function to the returned object
 }> => {
     // Validate essential configuration
     if (!config.database || !config.session) {
@@ -247,6 +253,47 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
         }
     };
     
+    // Function to clear sender-key-memory entries
+    const clearSenderKeyMemory = async () => {
+        try {
+            const [result] = await statements.clearSenderKeyMemory.execute([config.session]);
+            
+            // Clear cache entries for sender-key-memory
+            Object.keys(dataCache).forEach(key => {
+                if (key.includes('sender-key-memory')) {
+                    delete dataCache[key];
+                }
+            });
+            
+            console.log(`Cleared sender-key-memory entries for session ${config.session}`);
+            return result as sqlData;
+        } catch (error) {
+            console.error(`Error clearing sender-key-memory for session ${config.session}:`, error);
+            throw error;
+        }
+    };
+    
+    // Set up automatic cleanup interval (default: 24 hours)
+    const cleanupIntervalHours = config.cleanupIntervalHours || 24;
+    const intervalKey = `${config.host || 'localhost'}:${config.port || 3306}:${config.database}:${config.session}`;
+    
+    // Clear any existing interval for this connection
+    if (cleanupIntervals[intervalKey]) {
+        clearInterval(cleanupIntervals[intervalKey]);
+    }
+    
+    // Set up new interval for automatic cleanup
+    if (cleanupIntervalHours > 0) {
+        cleanupIntervals[intervalKey] = setInterval(async () => {
+            try {
+                await clearSenderKeyMemory();
+                console.log(`Automatic cleanup of sender-key-memory completed for session ${config.session}`);
+            } catch (err) {
+                console.error(`Automatic cleanup failed for session ${config.session}:`, err);
+            }
+        }, cleanupIntervalHours * 60 * 60 * 1000); // Convert hours to milliseconds
+    }
+    
     // Close connections and release resources
     const closeConnections = async () => {
         const poolKey = `${config.host || 'localhost'}:${config.port || 3306}:${config.database}:${config.session}`;
@@ -260,6 +307,12 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
         const stmtKey = `${config.session}:${tableName}`;
         if (preparedStatements[stmtKey]) {
             delete preparedStatements[stmtKey];
+        }
+
+        // Clear the cleanup interval when connections are closed
+        if (cleanupIntervals[intervalKey]) {
+            clearInterval(cleanupIntervals[intervalKey]);
+            delete cleanupIntervals[intervalKey];
         }
     };
 
@@ -338,6 +391,7 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
         query: async (sql: string, values: any[]) => {
             return await query(sql, values);
         },
-        closeConnections
+        closeConnections,
+        clearSenderKeyMemory // Add the new function to the returned object
     };
 };

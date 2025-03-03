@@ -188,7 +188,9 @@ export type MySQLConfig = {
 	/* Connection timeout in milliseconds (Default: 10000) */
 	connectionTimeout?: number,
 	/* Maximum idle time for connection in milliseconds */
-	idleTimeout?: number
+	idleTimeout?: number,
+	/* Interval in hours for automatic sender-key-memory cleanup (Default: 24, 0 to disable) */
+	cleanupIntervalHours?: number
 }
 
 export type valueReplacer = {
