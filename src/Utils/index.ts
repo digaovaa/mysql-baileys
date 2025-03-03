@@ -160,16 +160,17 @@ export const EnhancedBufferJSON = {
     }
 };
 
-// Connection pool monitoring
+// Connection pool monitoring - corrigindo o erro de "length" em type 'never'
 export const monitorConnectionPool = (pool: any): ConnectionStatus => {
     if (!pool || !pool.pool || typeof pool.pool.getConnection !== 'function') {
         return { active: 0, idle: 0, total: 0, queued: 0, healthy: false };
     }
     
-    const stats = pool.pool._allConnections?.length || 0;
-    const active = pool.pool._acquiringConnections?.length || 0;
-    const idle = pool.pool._freeConnections?.length || 0;
-    const queued = pool.pool._connectionQueue?.length || 0;
+    // Usando optional chaining e nullish coalescing para evitar o erro "length" em tipo "never"
+    const stats = pool.pool._allConnections?.length ?? 0;
+    const active = pool.pool._acquiringConnections?.length ?? 0;
+    const idle = pool.pool._freeConnections?.length ?? 0;
+    const queued = pool.pool._connectionQueue?.length ?? 0;
     
     return {
         active,

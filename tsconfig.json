@@ -8,6 +8,8 @@
 		"outDir": "./lib",
 		"rootDir": "./src",
 		"strict": false,
+		"noImplicitAny": false,
+		"strictNullChecks": false,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
