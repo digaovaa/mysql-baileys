@@ -1,4 +1,4 @@
-import { Connection, Pool, PoolConnection, PreparedStatementInfo } from 'mysql2/promise'
+import { Connection } from 'mysql2/promise'
 
 type Awaitable<T> = T | Promise<T>
 
@@ -126,17 +126,11 @@ export type sqlData = {
 		name: 'RowDataPacket'
 	}
 	value?: object[]
-	executionTime?: number
-	querySize?: number
 }
 
 export interface sqlConnection extends Connection {
 	connection?: {
 		_closing?: boolean
-		_healthCheck?: {
-			lastCheck: number
-			status: 'healthy' | 'unhealthy'
-		}
 	}
 }
 
@@ -174,23 +168,7 @@ export type MySQLConfig = {
 	/* If your connection is a server. (Default: false) */
 	isServer?: boolean,
 	/* Use the config SSL. (Default: disabled) */
-	ssl?: string | SslOptions,
-	/* Connection pool limit (Default: 20) */
-	connectionLimit?: number,
-	/* Queue limit for connections (Default: 0 - unlimited) */
-	queueLimit?: number,
-	/* Enable query cache (Default: true) */
-	enableCache?: boolean,
-	/* Cache TTL in milliseconds (Default: 300000 - 5 minutes) */
-	cacheTTL?: number,
-	/* Enable logging (Default: false) */
-	enableLogging?: boolean,
-	/* Connection timeout in milliseconds (Default: 10000) */
-	connectionTimeout?: number,
-	/* Maximum idle time for connection in milliseconds */
-	idleTimeout?: number,
-	/* Interval in hours for automatic sender-key-memory cleanup (Default: 24, 0 to disable) */
-	cleanupIntervalHours?: number
+	ssl?: string | SslOptions
 }
 
 export type valueReplacer = {
@@ -232,18 +210,4 @@ export type AuthenticationCreds = SignalCreds & {
 	pairingCode: string | undefined
 	lastPropHash: string | undefined
 	routingInfo: Buffer | undefined
-}
-
-// Add types for connection management
-export type ConnectionStatus = {
-	active: number,
-	idle: number,
-	total: number,
-	queued: number,
-	healthy: boolean
-}
-
-// Add types for prepared statement management
-export type PreparedStatementCache = {
-	[key: string]: PreparedStatementInfo
 }
