@@ -1,6 +1,6 @@
-import { createPool, Pool, PoolConnection, PreparedStatement } from 'mysql2/promise';
+import { createPool, Pool, PoolConnection, PreparedStatementInfo } from 'mysql2/promise';
 import { BufferJSON, initAuthCreds, fromObject } from '../Utils';
-import { MySQLConfig, sqlData, AuthenticationCreds, AuthenticationState, SignalDataTypeMap } from '../Types';
+import { MySQLConfig, sqlData, AuthenticationCreds, AuthenticationState, SignalDataTypeMap, PreparedStatementCache } from '../Types';
 import { createHash } from 'crypto';
 
 /**
@@ -10,7 +10,7 @@ import { createHash } from 'crypto';
 
 // Global connection pool and prepared statements cache
 const pools: Record<string, Pool> = {};
-const preparedStatements: Record<string, Record<string, PreparedStatement>> = {};
+const preparedStatements: Record<string, Record<string, PreparedStatementInfo>> = {};
 
 // Cache for frequently accessed data
 const dataCache: Record<string, { data: any, timestamp: number }> = {};
@@ -59,9 +59,19 @@ async function getConnection(config: MySQLConfig): Promise<Pool> {
             trace: false // Disable deprecated feature
         });
 
-        // Setup connection error handler
-        pools[poolKey].on('error', (err) => {
-            console.error(`Database pool error for ${config.database}:`, err);
+        // Setup connection error handler - fix for the TS error
+        pools[poolKey].on('connection', (conn) => {
+            conn.on('error', (err) => {
+                console.error(`Database connection error for ${config.database}:`, err);
+            });
+        });
+
+        pools[poolKey].on('acquire', (conn) => {
+            // Connection acquired from pool
+        });
+
+        pools[poolKey].on('release', (conn) => {
+            // Connection released back to pool
         });
     }
 
@@ -85,8 +95,8 @@ async function initializeDatabase(pool: Pool, tableName: string): Promise<void> 
     `);
 }
 
-// Prepare common queries for reuse
-async function prepareStatements(pool: Pool, tableName: string, session: string): Promise<Record<string, PreparedStatement>> {
+// Prepare common queries for reuse - fix the PreparedStatement type
+async function prepareStatements(pool: Pool, tableName: string, session: string): Promise<Record<string, PreparedStatementInfo>> {
     const safeTableName = sanitizeTableName(tableName);
     const key = `${session}:${safeTableName}`;
     
@@ -136,9 +146,10 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
             } catch (e) {
                 lastError = e as Error;
                 // Check if connection is lost and try to reconnect
-                if (e.code === 'PROTOCOL_CONNECTION_LOST' || 
-                    e.code === 'ECONNREFUSED' || 
-                    e.code === 'ER_CON_COUNT_ERROR') {
+                const err = e as any;
+                if (err.code === 'PROTOCOL_CONNECTION_LOST' || 
+                    err.code === 'ECONNREFUSED' || 
+                    err.code === 'ER_CON_COUNT_ERROR') {
                     // Force refresh connection pool
                     await new Promise(r => setTimeout(r, retryRequestDelayMs * (x + 1)));
                     continue;
@@ -163,7 +174,7 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
         
         try {
             const [rows] = await statements.select.execute([id, config.session]);
-            const data = rows[0]?.value ?? null;
+            const data = (rows as any[])[0]?.value ?? null;
             
             // Cache the result
             if (data) {
@@ -279,7 +290,7 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
                     await conn.beginTransaction();
                     
                     try {
-                        const promises = [];
+                        const promises: Promise<any>[] = [];
                         
                         for (const category in data) {
                             for (const id in data[category]) {

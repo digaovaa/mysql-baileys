@@ -166,10 +166,10 @@ export const monitorConnectionPool = (pool: any): ConnectionStatus => {
         return { active: 0, idle: 0, total: 0, queued: 0, healthy: false };
     }
     
-    const stats = pool.pool._allConnections.length;
-    const active = pool.pool._acquiringConnections.length;
-    const idle = pool.pool._freeConnections.length;
-    const queued = pool.pool._connectionQueue.length;
+    const stats = pool.pool._allConnections?.length || 0;
+    const active = pool.pool._acquiringConnections?.length || 0;
+    const idle = pool.pool._freeConnections?.length || 0;
+    const queued = pool.pool._connectionQueue?.length || 0;
     
     return {
         active,

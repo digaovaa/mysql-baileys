@@ -1,4 +1,4 @@
-import { Connection, Pool, PoolConnection, PreparedStatement } from 'mysql2/promise'
+import { Connection, Pool, PoolConnection, PreparedStatementInfo } from 'mysql2/promise'
 
 type Awaitable<T> = T | Promise<T>
 
@@ -243,5 +243,5 @@ export type ConnectionStatus = {
 
 // Add types for prepared statement management
 export type PreparedStatementCache = {
-	[key: string]: PreparedStatement
+	[key: string]: PreparedStatementInfo
 }
