@@ -1,25 +1,30 @@
 {
 	"compilerOptions": {
-		"target": "ES2018",
-		"module": "commonjs",
-		"declaration": true,
-		"declarationMap": true,
-		"sourceMap": true,
-		"outDir": "./lib",
-		"rootDir": "./src",
+		"target": "es2018",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"experimentalDecorators": true,
+		"allowJs": false,
+		"checkJs": false,
+		"outDir": "lib",
 		"strict": false,
-		"noImplicitAny": false,
-		"strictNullChecks": false,
-		"esModuleInterop": true,
+		"strictNullChecks": true,
 		"skipLibCheck": true,
+		"noImplicitThis": true,
+		"esModuleInterop": true,
+		"resolveJsonModule": true,
 		"forceConsistentCasingInFileNames": true,
-		"resolveJsonModule": true
+		"declaration": true,
+		"lib": [
+			"es2020",
+			"esnext.array",
+			"DOM"
+		]
 	},
-	"exclude": [
-		"node_modules",
-		"lib"
-	],
 	"include": [
-		"src/**/*"
+		"./src/**/*.ts"
+	],
+	"exclude": [
+		"node_modules"
 	]
 }
