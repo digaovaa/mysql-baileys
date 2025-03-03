@@ -31,7 +31,7 @@
 		"mysql2": "^3.6.5"
 	},
 	"devDependencies": {
-		"@adiwajshing/eslint-config": "github:adiwajshing/eslint-config",
+		
 		"@types/jest": "^29.5.11",
 		"@types/node": "^16.18.69",
 		"@types/uuid": "^9.0.8",
