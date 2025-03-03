@@ -29,6 +29,13 @@ try {
         description: packageJson.description,
         main: "index.js",
         types: "index.d.ts",
+        type: "commonjs",
+        exports: {
+            ".": {
+                "require": "./index.js",
+                "import": "./index.mjs"
+            }
+        },
         author: packageJson.author,
         license: packageJson.license,
         dependencies: {
@@ -42,6 +49,29 @@ try {
         JSON.stringify(distPackageJson, null, 2)
     );
     console.log('📄 package.json copiado para lib/');
+    
+    // Criar versão ESM do index.js para compatibilidade
+    console.log('📝 Criando wrapper ESM...');
+    const indexJs = fs.readFileSync(path.join(outputDir, 'index.js'), 'utf8');
+    
+    // Gera o arquivo ESM compatível
+    const esmWrapper = `// ESM wrapper for mysql-baileys
+import mysqlBaileys from './index.js';
+
+export const useMySQLAuthState = mysqlBaileys.useMySQLAuthState;
+export const monitorConnectionPool = mysqlBaileys.monitorConnectionPool;
+export const encryption = mysqlBaileys.encryption;
+export const performance = mysqlBaileys.performance;
+export const sqlSanitize = mysqlBaileys.sqlSanitize;
+
+export default mysqlBaileys.useMySQLAuthState;
+`;
+
+    fs.writeFileSync(
+        path.join(outputDir, 'index.mjs'),
+        esmWrapper
+    );
+    console.log('✅ Wrapper ESM criado');
     
     // Copiar README para o diretório lib
     if (fs.existsSync(path.join(__dirname, 'README.md'))) {

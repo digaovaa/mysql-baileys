@@ -4,6 +4,13 @@
 	"version": "1.6.0",
 	"main": "lib/index.js",
 	"types": "lib/index.d.ts",
+	"type": "commonjs",
+	"exports": {
+		".": {
+			"require": "./lib/index.js",
+			"import": "./lib/index.mjs"
+		}
+	},
 	"description": "Secure and high-performance MySQL implementation for Baileys.",
 	"homepage": "https://github.com/bobslavtriev/mysql-baileys",
 	"license": "MIT",
@@ -12,8 +19,8 @@
 	],
 	"scripts": {
 		"release": "release-it",
-		"build": "tsc",
-		"prepack": "tsc",
+		"build": "tsc && node build-package.js",
+		"prepack": "echo 'Skip automatic build during install to avoid permission issues'",
 		"prepare": "echo 'Skip automatic build during install to avoid permission issues'",
 		"build:tsc": "tsc",
 		"build:docs": "typedoc",
