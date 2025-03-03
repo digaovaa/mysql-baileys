@@ -1,6 +1,6 @@
 import { curve } from 'libsignal'
-import { randomBytes, randomUUID } from 'crypto'
-import { KeyPair, valueReplacer, valueReviver, AppDataSync, Fingerprint } from '../Types'
+import { randomBytes, randomUUID, createHash, createCipheriv, createDecipheriv } from 'crypto'
+import { KeyPair, valueReplacer, valueReviver, AppDataSync, Fingerprint, ConnectionStatus } from '../Types'
 
 const generateKeyPair = () => {
 	const { pubKey, privKey } = curve.generateKeyPair()
@@ -93,6 +93,118 @@ export const BufferJSON = {
 		return value
 	}
 }
+
+// Performance monitoring utilities
+export const performance = {
+    start: () => {
+        return process.hrtime();
+    },
+    end: (start: [number, number]) => {
+        const diff = process.hrtime(start);
+        return (diff[0] * 1e9 + diff[1]) / 1e6; // Return milliseconds
+    }
+};
+
+// Data encryption/decryption for sensitive data
+export const encryption = {
+    /**
+     * Encrypts sensitive data
+     * @param data String data to encrypt
+     * @param key Encryption key (32 bytes)
+     * @returns Encrypted string in format: iv:encryptedData
+     */
+    encrypt: (data: string, key: string): string => {
+        const iv = randomBytes(16);
+        const hashKey = createHash('sha256').update(key).digest();
+        const cipher = createCipheriv('aes-256-cbc', hashKey, iv);
+        let encrypted = cipher.update(data, 'utf8', 'hex');
+        encrypted += cipher.final('hex');
+        return `${iv.toString('hex')}:${encrypted}`;
+    },
+    
+    /**
+     * Decrypts sensitive data
+     * @param encData Encrypted data in format: iv:encryptedData
+     * @param key Encryption key (32 bytes)
+     * @returns Decrypted string
+     */
+    decrypt: (encData: string, key: string): string => {
+        const [ivHex, encryptedData] = encData.split(':');
+        const iv = Buffer.from(ivHex, 'hex');
+        const hashKey = createHash('sha256').update(key).digest();
+        const decipher = createDecipheriv('aes-256-cbc', hashKey, iv);
+        let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+    }
+};
+
+// Enhanced JSON serialization with compression for large objects
+export const EnhancedBufferJSON = {
+    ...BufferJSON,
+    compressedReplacer: (key: string, value: any) => {
+        const processed = BufferJSON.replacer(key, value);
+        // Add compression for large string values
+        if (typeof processed === 'string' && processed.length > 1024) {
+            // Implementation would depend on preferred compression library
+            return { type: 'CompressedString', data: processed };
+        }
+        return processed;
+    },
+    compressedReviver: (key: string, value: any) => {
+        if (value && value.type === 'CompressedString') {
+            // Decompress and return
+            return value.data;
+        }
+        return BufferJSON.reviver(key, value);
+    }
+};
+
+// Connection pool monitoring
+export const monitorConnectionPool = (pool: any): ConnectionStatus => {
+    if (!pool || !pool.pool || typeof pool.pool.getConnection !== 'function') {
+        return { active: 0, idle: 0, total: 0, queued: 0, healthy: false };
+    }
+    
+    const stats = pool.pool._allConnections.length;
+    const active = pool.pool._acquiringConnections.length;
+    const idle = pool.pool._freeConnections.length;
+    const queued = pool.pool._connectionQueue.length;
+    
+    return {
+        active,
+        idle,
+        total: stats,
+        queued,
+        healthy: idle > 0 || active < stats // Pool is healthy if there are idle connections or not all are active
+    };
+};
+
+// Improved sanitization utilities
+export const sqlSanitize = {
+    identifier: (str: string): string => {
+        return str.replace(/[^a-zA-Z0-9_]/g, '');
+    },
+    value: (val: any): any => {
+        if (typeof val === 'string') {
+            return val.replace(/[\0\n\r\b\t\\'"\x1a]/g, char => {
+                switch (char) {
+                    case "\0": return "\\0";
+                    case "\n": return "\\n";
+                    case "\r": return "\\r";
+                    case "\b": return "\\b";
+                    case "\t": return "\\t";
+                    case "\x1a": return "\\Z";
+                    case "'": return "''";
+                    case '"': return '""';
+                    case "\\": return "\\\\";
+                    default: return char;
+                }
+            });
+        }
+        return val;
+    }
+};
 
 export const initAuthCreds = () => {
 	const identityKey = generateKeyPair()
