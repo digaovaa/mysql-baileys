@@ -56,7 +56,13 @@ async function connection(config: MySQLConfig, force: boolean = false){
 	return conn
 }
 
-export const useMySQLAuthState = async(config: MySQLConfig): Promise<{ state: AuthenticationState, saveCreds: () => Promise<void>, clear: () => Promise<void>, removeCreds: () => Promise<void> }> => {
+export const useMySQLAuthState = async(config: MySQLConfig): Promise<{ 
+    state: AuthenticationState, 
+    saveCreds: () => Promise<void>, 
+    clear: () => Promise<void>, 
+    removeCreds: () => Promise<void>,
+    clearSenderKeyMemory: () => Promise<sqlData>  // Add the new function to return type
+}> => {
 	const sqlConn = await connection(config)
 
 	const tableName = config.tableName || 'auth'
@@ -102,6 +108,13 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{ state: Au
 		await query(`DELETE FROM ${tableName} WHERE session = ?`, [config.session])
 	}
 
+    // Function to clear sender-key-memory entries
+    const clearSenderKeyMemory = async () => {
+        const result = await query(`DELETE FROM ${tableName} WHERE id LIKE 'sender-key-memory-%' AND session = ?`, [config.session]);
+        console.log(`Deleted ${result.affectedRows} rows from sender-key-memory`);
+        return result;
+    };
+
 	const creds: AuthenticationCreds = await readData('creds') || initAuthCreds()
 
 	return {
@@ -142,6 +155,7 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{ state: Au
 		},
 		removeCreds: async () => {
 			await removeAll()
-		}
+		},
+        clearSenderKeyMemory  // Add the new function to the returned object
 	}
 }

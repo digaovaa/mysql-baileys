@@ -126,6 +126,7 @@ export type sqlData = {
 		name: 'RowDataPacket'
 	}
 	value?: object[]
+	affectedRows?: number  // Add this property for DELETE operations
 }
 
 export interface sqlConnection extends Connection {

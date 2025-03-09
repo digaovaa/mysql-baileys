@@ -137,3 +137,25 @@ startSock('session2')
 startSock('session3')
 startSock('session4')
 ```
+
+## Memory Management
+
+WhatsApp sessions can accumulate sender key memory data over time, which can grow your database size. You can manually clean up this data using the `clearSenderKeyMemory` function.
+
+```ts
+const { state, saveCreds, clearSenderKeyMemory } = await useMySQLAuthState({
+    session: sessionName,
+    host: 'localhost',
+    port: 3306,
+    user: 'bob',
+    password: 'Password123#',
+    database: 'baileys',
+    tableName: 'auth'
+})
+
+// Call this function periodically to clean up sender key memory data
+const result = await clearSenderKeyMemory();
+console.log(`Cleared ${result.affectedRows} sender key memory entries`);
+```
+
+This is useful to perform periodically as sender key memory entries can accumulate over time and are not automatically cleaned up.
