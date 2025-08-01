@@ -1,7 +1,7 @@
 {
 	"author": "bobslavtriev",
 	"name": "mysql-baileys",
-	"version": "1.6.0",
+	"version": "1.6.1",
 	"main": "lib/index.js",
 	"types": "lib/index.d.ts",
 	"description": "Ultra-fast MySQL implementation for Baileys - supports 400+ concurrent connections with minimal resource usage. Optimized schema with separated tables, InnoDB caching, and expert-level performance tuning.",

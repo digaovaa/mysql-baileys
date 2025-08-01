@@ -13,6 +13,30 @@ import { MYSQL_OPTIMIZATIONS } from '../Utils/mysql-config'
  * - Efficient bulk operations and connection management
  */
 
+// Helper function to safely parse JSON data from MySQL
+const safeParseJSON = (field: any) => {
+	if (field === null || field === undefined) {
+		return null
+	}
+	
+	if (typeof field === 'string') {
+		try {
+			return JSON.parse(field, BufferJSON.reviver)
+		} catch (error) {
+			console.warn('Error parsing JSON string:', error.message)
+			return null
+		}
+	}
+	
+	// If it's already an object, just apply the reviver to it
+	try {
+		return JSON.parse(JSON.stringify(field), BufferJSON.reviver)
+	} catch (error) {
+		console.warn('Error processing JSON object:', error.message)
+		return field // Return as-is if can't process
+	}
+}
+
 let conn: sqlConnection
 let isOptimizedSchema = false
 
@@ -59,6 +83,9 @@ async function createOptimizedSchema(baseTableName: string) {
 			}
 		}
 
+		// Check if old table exists and migrate data
+		await migrateFromOldSchema(baseTableName)
+
 		// Create optimized tables with InnoDB engine and proper indexes
 		for (const [tableName, schemaFunction] of Object.entries(MYSQL_OPTIMIZATIONS.tableSchemas)) {
 			await (conn as any).execute(schemaFunction(baseTableName))
@@ -71,6 +98,155 @@ async function createOptimizedSchema(baseTableName: string) {
 	} catch (error) {
 		console.warn('Some MySQL optimizations could not be applied:', error.message)
 	}
+}
+
+async function migrateFromOldSchema(baseTableName: string) {
+	try {
+		// Check if old table exists
+		const [tables] = await (conn as any).query(`SHOW TABLES LIKE '${baseTableName}'`)
+		
+		if (tables.length > 0) {
+			console.log('🔄 Found old table format, migrating to optimized schema...')
+			
+			// Get all sessions from old table
+			const [oldData] = await (conn as any).query(`SELECT * FROM ${baseTableName}`)
+			
+			if (oldData.length > 0) {
+				// Group data by session
+				const sessionData: { [session: string]: any } = {}
+				
+				for (const row of oldData) {
+					const session = row.session
+					if (!sessionData[session]) {
+						sessionData[session] = {}
+					}
+					
+					sessionData[session][row.id] = row.value
+				}
+				
+				// Migrate each session
+				for (const [session, data] of Object.entries(sessionData)) {
+					await migrateSessionData(baseTableName, session, data)
+				}
+				
+				console.log(`✅ Successfully migrated ${Object.keys(sessionData).length} sessions to optimized format`)
+				
+				// Rename old table for backup
+				await (conn as any).execute(`RENAME TABLE ${baseTableName} TO ${baseTableName}_backup_${Date.now()}`)
+				console.log('✅ Old table backed up successfully')
+			}
+		}
+	} catch (error) {
+		console.warn('Migration warning (this is normal for new installations):', error.message)
+	}
+}
+
+async function migrateSessionData(baseTableName: string, session: string, data: any) {
+	try {
+		// Extract device credentials if they exist
+		if (data.creds) {
+			const creds = safeParseJSON(data.creds)
+			if (creds) {
+				// Insert into devices table
+				const deviceData = JSON.stringify({
+					me: creds.me,
+					account: creds.account,
+					signalIdentities: creds.signalIdentities,
+					myAppStateKeyId: creds.myAppStateKeyId,
+					firstUnuploadedPreKeyId: creds.firstUnuploadedPreKeyId,
+					nextPreKeyId: creds.nextPreKeyId,
+					lastAccountSyncTimestamp: creds.lastAccountSyncTimestamp,
+					platform: creds.platform,
+					processedHistoryMessages: creds.processedHistoryMessages,
+					accountSyncCounter: creds.accountSyncCounter,
+					accountSettings: creds.accountSettings,
+					deviceId: creds.deviceId,
+					phoneId: creds.phoneId,
+					identityId: creds.identityId,
+					registered: creds.registered,
+					backupToken: creds.backupToken,
+					registration: creds.registration,
+					pairingCode: creds.pairingCode,
+					lastPropHash: creds.lastPropHash,
+					routingInfo: creds.routingInfo
+				}, BufferJSON.replacer)
+
+				await (conn as any).execute(`
+					INSERT IGNORE INTO ${baseTableName}_devices 
+					(session, device_id, registration_id, identity_key, signed_pre_key, noise_key, pairing_key, adv_secret_key, account_data)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				`, [
+					session,
+					creds.deviceId || 'default',
+					creds.registrationId || 0,
+					JSON.stringify(creds.signedIdentityKey || {}, BufferJSON.replacer),
+					JSON.stringify(creds.signedPreKey || {}, BufferJSON.replacer),
+					JSON.stringify(creds.noiseKey || {}, BufferJSON.replacer),
+					JSON.stringify(creds.pairingEphemeralKeyPair || {}, BufferJSON.replacer),
+					creds.advSecretKey || '',
+					deviceData
+				])
+			}
+		}
+
+		// Migrate other data types
+		for (const [key, value] of Object.entries(data)) {
+			if (key === 'creds') continue // Already processed
+			
+			await migrateDataByType(baseTableName, session, key, value)
+		}
+	} catch (error) {
+		console.warn(`Error migrating session ${session}:`, error.message)
+	}
+}
+
+async function migrateDataByType(baseTableName: string, session: string, key: string, value: any) {
+	try {
+		const tableConfig = getTableConfigFromKey(key)
+		if (!tableConfig) return
+
+		const tableName = `${baseTableName}${tableConfig.suffix}`
+		const keyValue = key.replace(tableConfig.prefix, '')
+
+		if (tableConfig.suffix === '_sessions' || tableConfig.suffix === '_senderkeys') {
+			// Handle binary data
+			const binaryData = Buffer.from(value)
+			await (conn as any).execute(`
+				INSERT IGNORE INTO ${tableName} (session, ${tableConfig.keyColumn}, ${tableConfig.dataColumn}) 
+				VALUES (?, ?, ?)
+			`, [session, keyValue, binaryData])
+		} else {
+			// Handle JSON data
+			await (conn as any).execute(`
+				INSERT IGNORE INTO ${tableName} (session, ${tableConfig.keyColumn}, ${tableConfig.dataColumn}) 
+				VALUES (?, ?, ?)
+			`, [session, keyValue, JSON.stringify(value, BufferJSON.replacer)])
+		}
+	} catch (error) {
+		console.warn(`Error migrating key ${key}:`, error.message)
+	}
+}
+
+function getTableConfigFromKey(key: string) {
+	if (key.startsWith('pre-key-')) {
+		return { suffix: '_prekeys', keyColumn: 'key_id', dataColumn: 'key_data', prefix: 'pre-key-' }
+	}
+	if (key.startsWith('session-')) {
+		return { suffix: '_sessions', keyColumn: 'session_id', dataColumn: 'session_data', prefix: 'session-' }
+	}
+	if (key.startsWith('sender-key-memory-')) {
+		return { suffix: '_memory', keyColumn: 'jid', dataColumn: 'memory_data', prefix: 'sender-key-memory-' }
+	}
+	if (key.startsWith('sender-key-')) {
+		return { suffix: '_senderkeys', keyColumn: 'key_id', dataColumn: 'key_data', prefix: 'sender-key-' }
+	}
+	if (key.startsWith('app-state-sync-version-')) {
+		return { suffix: '_appversions', keyColumn: 'version_id', dataColumn: 'version_data', prefix: 'app-state-sync-version-' }
+	}
+	if (key.startsWith('app-state-sync-key-')) {
+		return { suffix: '_appkeys', keyColumn: 'key_id', dataColumn: 'key_data', prefix: 'app-state-sync-key-' }
+	}
+	return null
 }
 
 export const useMySQLAuthState = async(config: MySQLConfig): Promise<{ 
@@ -116,12 +292,12 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
 		return {
 			...baseAuthCreds,
 			registrationId: device.registration_id,
-			signedIdentityKey: JSON.parse(device.identity_key, BufferJSON.reviver),
-			signedPreKey: JSON.parse(device.signed_pre_key, BufferJSON.reviver),
-			noiseKey: JSON.parse(device.noise_key, BufferJSON.reviver),
-			pairingEphemeralKeyPair: JSON.parse(device.pairing_key, BufferJSON.reviver),
+			signedIdentityKey: safeParseJSON(device.identity_key),
+			signedPreKey: safeParseJSON(device.signed_pre_key),
+			noiseKey: safeParseJSON(device.noise_key),
+			pairingEphemeralKeyPair: safeParseJSON(device.pairing_key),
 			advSecretKey: device.adv_secret_key,
-			...(device.account_data ? JSON.parse(device.account_data, BufferJSON.reviver) : {})
+			...(device.account_data ? safeParseJSON(device.account_data) : {})
 		}
 	}
 
@@ -195,9 +371,9 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
 			return new Uint8Array(row[tableConfig.dataColumn])
 		}
 		
-		// Handle JSON data with proper parsing
+		// Handle JSON data with safe parsing
 		const jsonData = row[tableConfig.dataColumn]
-		const parsed = JSON.parse(jsonData, BufferJSON.reviver)
+		const parsed = safeParseJSON(jsonData)
 		return type === 'app-state-sync-key' ? fromObject(parsed) : parsed
 	}
 
