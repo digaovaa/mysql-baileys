@@ -1,14 +1,31 @@
 {
 	"author": "bobslavtriev",
 	"name": "mysql-baileys",
-	"version": "1.5.1",
+	"version": "1.6.0",
 	"main": "lib/index.js",
 	"types": "lib/index.d.ts",
-	"description": "Implementation of MySQL in Baileys.",
+	"description": "Ultra-fast MySQL implementation for Baileys - supports 400+ concurrent connections with minimal resource usage. Optimized schema with separated tables, InnoDB caching, and expert-level performance tuning.",
 	"homepage": "https://github.com/bobslavtriev/mysql-baileys",
 	"license": "MIT",
+	"keywords": [
+		"baileys",
+		"mysql",
+		"whatsapp",
+		"auth",
+		"performance",
+		"optimization",
+		"ultra-fast",
+		"400-connections",
+		"innodb",
+		"cache",
+		"separated-tables",
+		"high-performance"
+	],
 	"files": [
-		"lib/*"
+		"lib/*",
+		"PERFORMANCE.md",
+		"mysql-optimized.cnf",
+		"examples/*"
 	],
 	"scripts": {
 		"release": "release-it",
