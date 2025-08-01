@@ -380,10 +380,32 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
 		const tableConfig = getTableConfig(type)
 		if (!tableConfig) return
 
-		// Handle different data types
+		// Handle different data types with proper type checking
 		let valueFixed: any
 		if (tableConfig.suffix === '_sessions' || tableConfig.suffix === '_senderkeys') {
-			valueFixed = Buffer.from(value)
+			// Handle binary data with proper type checking
+			if (value instanceof Uint8Array) {
+				valueFixed = Buffer.from(value)
+			} else if (Buffer.isBuffer(value)) {
+				valueFixed = value
+			} else if (Array.isArray(value)) {
+				valueFixed = Buffer.from(value)
+			} else if (typeof value === 'string') {
+				valueFixed = Buffer.from(value, 'base64')
+			} else if (value && typeof value === 'object') {
+				// If it's an object, try to extract the data property or convert to JSON first
+				if (value.data && Array.isArray(value.data)) {
+					valueFixed = Buffer.from(value.data)
+				} else if (value.data && typeof value.data === 'string') {
+					valueFixed = Buffer.from(value.data, 'base64')
+				} else {
+					// Fallback: stringify the object and then create buffer
+					valueFixed = Buffer.from(JSON.stringify(value, BufferJSON.replacer))
+				}
+			} else {
+				// Last resort: convert to string and then to buffer
+				valueFixed = Buffer.from(String(value))
+			}
 		} else {
 			valueFixed = JSON.stringify(value, BufferJSON.replacer)
 		}
