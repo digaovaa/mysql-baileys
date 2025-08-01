@@ -19,22 +19,32 @@ const safeParseJSON = (field: any) => {
 		return null
 	}
 	
+	// If it's already a valid object (not a string), return it
+	if (typeof field === 'object' && field !== null && field.constructor === Object) {
+		try {
+			return JSON.parse(JSON.stringify(field), BufferJSON.reviver)
+		} catch (error) {
+			console.warn('Error processing JSON object:', error.message)
+			return field // Return as-is if can't process
+		}
+	}
+	
 	if (typeof field === 'string') {
+		// Handle empty strings
+		if (field.trim() === '') {
+			return null
+		}
+		
 		try {
 			return JSON.parse(field, BufferJSON.reviver)
 		} catch (error) {
-			console.warn('Error parsing JSON string:', error.message)
+			console.warn('Error parsing JSON string:', error.message, 'Field:', field.substring(0, 100))
 			return null
 		}
 	}
 	
-	// If it's already an object, just apply the reviver to it
-	try {
-		return JSON.parse(JSON.stringify(field), BufferJSON.reviver)
-	} catch (error) {
-		console.warn('Error processing JSON object:', error.message)
-		return field // Return as-is if can't process
-	}
+	// For other types (numbers, booleans, etc.), return as-is
+	return field
 }
 
 let conn: sqlConnection
@@ -364,15 +374,51 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
 		if(!data[0]) return null
 
 		const row = data[0]
+		const rawData = row[tableConfig.dataColumn]
 		
-		// Handle binary data for sessions and sender keys
+		// Validate data exists and is not null
+		if (rawData === null || rawData === undefined) {
+			console.warn(`Warning: Null data found for ${type}:${id}`)
+			return null
+		}
+		
+		// Handle binary data for sessions and sender keys with proper validation
 		if (tableConfig.suffix === '_sessions' || tableConfig.suffix === '_senderkeys') {
-			return new Uint8Array(row[tableConfig.dataColumn])
+			try {
+				// Ensure we have valid buffer data
+				if (Buffer.isBuffer(rawData)) {
+					return new Uint8Array(rawData)
+				} else if (rawData instanceof Uint8Array) {
+					return rawData
+				} else if (Array.isArray(rawData)) {
+					return new Uint8Array(rawData)
+				} else if (typeof rawData === 'string') {
+					// Try to parse as base64
+					try {
+						const buffer = Buffer.from(rawData, 'base64')
+						return new Uint8Array(buffer)
+					} catch {
+						// If not base64, treat as binary string
+						const buffer = Buffer.from(rawData, 'binary')
+						return new Uint8Array(buffer)
+					}
+				} else {
+					console.warn(`Warning: Invalid binary data type for ${type}:${id}`, typeof rawData)
+					return null
+				}
+			} catch (error) {
+				console.warn(`Error processing binary data for ${type}:${id}:`, error.message)
+				return null
+			}
 		}
 		
 		// Handle JSON data with safe parsing
-		const jsonData = row[tableConfig.dataColumn]
-		const parsed = safeParseJSON(jsonData)
+		const parsed = safeParseJSON(rawData)
+		if (parsed === null) {
+			console.warn(`Warning: Failed to parse JSON for ${type}:${id}`)
+			return null
+		}
+		
 		return type === 'app-state-sync-key' ? fromObject(parsed) : parsed
 	}
 
