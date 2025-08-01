@@ -89,11 +89,10 @@ async function createOptimizedSchema(baseTableName: string) {
 		// Create optimized tables with InnoDB engine and proper indexes
 		for (const [tableName, schemaFunction] of Object.entries(MYSQL_OPTIMIZATIONS.tableSchemas)) {
 			await (conn as any).execute(schemaFunction(baseTableName))
-			console.log(`✓ Optimized table '${tableName}' ready`)
+			
 		}
 		
-		console.log('✓ Ultra-fast MySQL schema initialized successfully')
-		console.log('✓ Ready for 400+ concurrent connections with minimal resource usage')
+	
 		
 	} catch (error) {
 		console.warn('Some MySQL optimizations could not be applied:', error.message)
@@ -106,7 +105,7 @@ async function migrateFromOldSchema(baseTableName: string) {
 		const [tables] = await (conn as any).query(`SHOW TABLES LIKE '${baseTableName}'`)
 		
 		if (tables.length > 0) {
-			console.log('🔄 Found old table format, migrating to optimized schema...')
+			
 			
 			// Get all sessions from old table
 			const [oldData] = await (conn as any).query(`SELECT * FROM ${baseTableName}`)
@@ -129,11 +128,11 @@ async function migrateFromOldSchema(baseTableName: string) {
 					await migrateSessionData(baseTableName, session, data)
 				}
 				
-				console.log(`✅ Successfully migrated ${Object.keys(sessionData).length} sessions to optimized format`)
+		
 				
 				// Rename old table for backup
 				await (conn as any).execute(`RENAME TABLE ${baseTableName} TO ${baseTableName}_backup_${Date.now()}`)
-				console.log('✅ Old table backed up successfully')
+				
 			}
 		}
 	} catch (error) {
@@ -451,7 +450,6 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
 
 	const clearSenderKeyMemory = async () => {
 		const result = await query(`DELETE FROM ${tableName}_memory WHERE session = ?`, [config.session])
-		console.log(`✓ Cleared ${result.affectedRows || 0} sender-key-memory entries`)
 		return result
 	}
 
