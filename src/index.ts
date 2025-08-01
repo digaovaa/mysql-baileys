@@ -1,3 +1,11 @@
 import { useMySQLAuthState } from './Mysql'
-export { useMySQLAuthState }
+import { useOptimizedMySQLAuthState } from './Mysql/optimized'
+import { migrateToOptimizedStructure, checkMigrationNeeded } from './Utils/migration'
+
+export { 
+    useMySQLAuthState, 
+    useOptimizedMySQLAuthState,
+    migrateToOptimizedStructure,
+    checkMigrationNeeded
+}
 export default useMySQLAuthState

@@ -169,7 +169,15 @@ export type MySQLConfig = {
 	/* If your connection is a server. (Default: false) */
 	isServer?: boolean,
 	/* Use the config SSL. (Default: disabled) */
-	ssl?: string | SslOptions
+	ssl?: string | SslOptions,
+	/* Enable connection pooling for better performance. (Default: false) */
+	connectionPooling?: boolean,
+	/* Maximum number of connections per pool. (Default: 10) */
+	maxConnections?: number,
+	/* Enable query cache for repeated queries. (Default: false) */
+	enableQueryCache?: boolean,
+	/* Enable InnoDB optimizations for ultra performance. (Default: false) */
+	enableInnoDBOptimizations?: boolean
 }
 
 export type valueReplacer = {

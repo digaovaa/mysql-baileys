@@ -49,7 +49,15 @@ async function connection(config: MySQLConfig, force: boolean = false){
 		})
 
 		if (newConnection) {
-			await conn.execute('CREATE TABLE IF NOT EXISTS `' + config.tableName + '` (`session` varchar(50) NOT NULL, `id` varchar(80) NOT NULL, `value` json DEFAULT NULL, UNIQUE KEY `idxunique` (`session`,`id`), KEY `idxsession` (`session`), KEY `idxid` (`id`)) ENGINE=MyISAM;')
+			// Optimized table creation with InnoDB engine and proper indexing
+			await conn.execute(`CREATE TABLE IF NOT EXISTS \`${config.tableName || 'auth'}\` (
+				\`session\` varchar(50) NOT NULL, 
+				\`id\` varchar(80) NOT NULL, 
+				\`value\` json DEFAULT NULL, 
+				UNIQUE KEY \`idxunique\` (\`session\`,\`id\`), 
+				KEY \`idxsession\` (\`session\`), 
+				KEY \`idxid\` (\`id\`)
+			) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci ROW_FORMAT=COMPRESSED;`)
 		}
 	}
 
@@ -61,7 +69,7 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
     saveCreds: () => Promise<void>, 
     clear: () => Promise<void>, 
     removeCreds: () => Promise<void>,
-    clearSenderKeyMemory: () => Promise<sqlData>  // Add the new function to return type
+    clearSenderKeyMemory: () => Promise<sqlData>
 }> => {
 	const sqlConn = await connection(config)
 
@@ -72,9 +80,21 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
 	const query = async (sql: string, values: string[]) => {
 		for (let x = 0; x < maxtRetries; x++){
 			try {
-				const [rows] = await sqlConn.query(sql, values)
+				const [rows] = await sqlConn.execute(sql, values)
 				return rows as sqlData
 			} catch(e){
+				console.warn(`Query attempt ${x + 1} failed:`, e)
+				if (x === maxtRetries - 1) {
+					// Try to reconnect on final attempt
+					try {
+						await connection(config, true)
+						const [rows] = await sqlConn.execute(sql, values)
+						return rows as sqlData
+					} catch (reconnectError) {
+						console.error('Failed to reconnect and retry query:', reconnectError)
+						throw e
+					}
+				}
 				await new Promise(r => setTimeout(r, retryRequestDelayMs))
 			}
 		}
@@ -82,7 +102,7 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
 	}
 
 	const readData = async (id: string) => {
-		const data = await query(`SELECT value FROM ${tableName} WHERE id = ? AND session = ?`, [id, config.session])
+		const data = await query(`SELECT value FROM ${tableName} WHERE id = ? AND session = ? LIMIT 1`, [id, config.session])
 		if(!data[0]?.value){
 			return null
 		}
@@ -108,10 +128,10 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
 		await query(`DELETE FROM ${tableName} WHERE session = ?`, [config.session])
 	}
 
-    // Function to clear sender-key-memory entries
+    // Function to clear sender-key-memory entries with optimized performance
     const clearSenderKeyMemory = async () => {
         const result = await query(`DELETE FROM ${tableName} WHERE id LIKE 'sender-key-memory-%' AND session = ?`, [config.session]);
-        console.log(`Deleted ${result.affectedRows} rows from sender-key-memory`);
+        console.log(`Deleted ${result.affectedRows || 0} rows from sender-key-memory`);
         return result;
     };
 
@@ -123,27 +143,59 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
 			keys: {
 				get: async (type, ids) => {
 					const data: { [id: string]: SignalDataTypeMap[typeof type] } = { }
-					for(const id of ids){
-						let value = await readData(`${type}-${id}`)
-						if (type === 'app-state-sync-key' && value){
-							value = fromObject(value)
+					
+					// Batch processing for better performance
+					if (ids.length > 10) {
+						// Use batch query for large requests
+						const placeholders = ids.map(() => '?').join(',')
+						const batchQuery = `SELECT id, value FROM ${tableName} WHERE session = ? AND id IN (${placeholders})`
+						const results = await query(batchQuery, [config.session, ...ids.map(id => `${type}-${id}`)])
+						
+						for (const row of results as any[]) {
+							const id = row.id.replace(`${type}-`, '')
+							let value = row.value
+							
+							if (value) {
+								const parsed = typeof value === 'object' ? JSON.stringify(value) : value
+								value = JSON.parse(parsed, BufferJSON.reviver)
+								
+								if (type === 'app-state-sync-key' && value) {
+									value = fromObject(value)
+								}
+								data[id] = value
+							}
 						}
-						data[id] = value
+					} else {
+						// Use individual queries for small requests
+						for(const id of ids){
+							let value = await readData(`${type}-${id}`)
+							if (type === 'app-state-sync-key' && value){
+								value = fromObject(value)
+							}
+							data[id] = value
+						}
 					}
+					
 					return data
 				},
 				set: async (data) => {
+					// Batch write operations for better performance
+					const writePromises: Promise<void>[] = []
+					
 					for(const category in data) {
 						for(const id in data[category]) {
 							const value = data[category][id]
 							const name = `${category}-${id}`
 							if (value){
-								await writeData(name, value)
+								writePromises.push(writeData(name, value))
 							} else {
-								await removeData(name)
+								writePromises.push(removeData(name))
 							}
 						}
 					}
+					
+					// Execute all writes in parallel for better performance
+					await Promise.all(writePromises)
 				}
 			}
 		},
@@ -156,6 +208,6 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
 		removeCreds: async () => {
 			await removeAll()
 		},
-        clearSenderKeyMemory  // Add the new function to the returned object
+        clearSenderKeyMemory
 	}
 }
