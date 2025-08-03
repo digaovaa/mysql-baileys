@@ -787,8 +787,41 @@ export const useOptimizedMySQLAuthState = async(config: OptimizedMySQLConfig): P
 
     // Remove all data including device credentials
     const removeAll = async () => {
-        await query(`DELETE FROM ${tablePrefix}_device WHERE session = ?`, [optimizedConfig.session])
-        // Foreign key constraints will automatically delete related data
+        try {
+            // Get device ID first to ensure we're removing the correct data
+            const deviceResult = await query(
+                `SELECT id FROM ${tablePrefix}_device WHERE session = ? LIMIT 1`,
+                [optimizedConfig.session]
+            )
+            
+            if (!deviceResult[0]) {
+                // Device doesn't exist, nothing to remove
+                return
+            }
+            
+            const deviceId = deviceResult[0].id
+            
+            // Explicitly remove all data related to this device_id
+            // Order matters: remove child tables first, then parent table
+            const deleteOperations = [
+                // Remove all related data tables
+                query(`DELETE FROM ${tablePrefix}_sender_key_memory WHERE device_id = ?`, [deviceId]),
+                query(`DELETE FROM ${tablePrefix}_app_state_sync_version WHERE device_id = ?`, [deviceId]),
+                query(`DELETE FROM ${tablePrefix}_app_state_sync_key WHERE device_id = ?`, [deviceId]),
+                query(`DELETE FROM ${tablePrefix}_sender_key WHERE device_id = ?`, [deviceId]),
+                query(`DELETE FROM ${tablePrefix}_session WHERE device_id = ?`, [deviceId]),
+                query(`DELETE FROM ${tablePrefix}_pre_key WHERE device_id = ?`, [deviceId]),
+                // Finally remove the device record itself
+                query(`DELETE FROM ${tablePrefix}_device WHERE id = ?`, [deviceId])
+            ]
+            
+            // Execute all delete operations
+            await Promise.all(deleteOperations)
+        } catch (error) {
+            // If explicit deletion fails, try fallback with session
+            await query(`DELETE FROM ${tablePrefix}_device WHERE session = ?`, [optimizedConfig.session])
+            // Foreign key constraints will handle cascading deletion as fallback
+        }
     }
 
     const clearSenderKeyMemory = async () => {
