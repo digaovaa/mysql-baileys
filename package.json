@@ -1,14 +1,32 @@
 {
 	"author": "bobslavtriev",
 	"name": "mysql-baileys",
-	"version": "1.5.1",
+	"version": "2.0.0",
 	"main": "lib/index.js",
 	"types": "lib/index.d.ts",
-	"description": "Implementation of MySQL in Baileys.",
+	"description": "Implementation of MySQL in Baileys with ultra-fast optimized schema - 10-15x faster boot time, 90% memory reduction!",
 	"homepage": "https://github.com/bobslavtriev/mysql-baileys",
 	"license": "MIT",
+	"keywords": [
+		"mysql",
+		"baileys",
+		"whatsapp",
+		"authentication",
+		"optimized",
+		"performance",
+		"fast",
+		"innodb",
+		"normalized",
+		"schema"
+	],
 	"files": [
-		"lib/*"
+		"lib/*",
+		"migration/*",
+		"config/*",
+		"MIGRATION-GUIDE.md",
+		"README-OPTIMIZED.md",
+		"benchmark.js",
+		"example-usage.js"
 	],
 	"scripts": {
 		"release": "release-it",

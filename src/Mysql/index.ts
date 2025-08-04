@@ -2,9 +2,16 @@ import { createConnection } from 'mysql2/promise'
 import { BufferJSON, initAuthCreds, fromObject } from '../Utils'
 import { MySQLConfig, sqlData, sqlConnection, AuthenticationCreds, AuthenticationState, SignalDataTypeMap } from '../Types'
 
+// Importar versão otimizada
+import { useMySQLAuthStateOptimized } from './optimized'
+
 /**
  * Stores the full authentication state in mysql
  * Far more efficient than file
+ * 
+ * ⚡ NOVA VERSÃO OTIMIZADA DISPONÍVEL!
+ * Use useMySQLAuthStateOptimized para performance máxima
+ * 
  * @param {string} host - The hostname of the database you are connecting to. (Default: localhost)
  * @param {number} port - The port number to connect to. (Default: 3306)
  * @param {string} user - The MySQL user to authenticate as. (Default: root)
@@ -158,4 +165,24 @@ export const useMySQLAuthState = async(config: MySQLConfig): Promise<{
 		},
         clearSenderKeyMemory  // Add the new function to the returned object
 	}
+}
+
+// Exportar ambas as versões
+export { useMySQLAuthStateOptimized }
+
+// Função helper para escolher automaticamente a melhor versão
+export const useMySQLAuthStateBest = async(config: MySQLConfig & { useOptimized?: boolean }) => {
+    console.log('🚀 MySQL-Baileys - Escolhendo melhor implementação...')
+    
+    if (config.useOptimized !== false) {
+        try {
+            console.log('⚡ Usando versão OTIMIZADA (schema normalizado)')
+            return await useMySQLAuthStateOptimized(config)
+        } catch (error) {
+            console.warn('⚠️ Erro na versão otimizada, usando fallback:', error.message)
+        }
+    }
+    
+    console.log('📦 Usando versão LEGACY (compatibilidade)')
+    return await useMySQLAuthState(config)
 }

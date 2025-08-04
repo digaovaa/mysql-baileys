@@ -1,0 +1,235 @@
+# ========================================
+# CONFIGURAÇÃO MYSQL OTIMIZADA PARA MYSQL-BAILEYS
+# Configurações específicas para performance máxima com WhatsApp data
+# ========================================
+
+[mysqld]
+
+# ========================================
+# CONFIGURAÇÕES BÁSICAS
+# ========================================
+
+# Data directory e networking
+datadir = /var/lib/mysql
+socket = /var/lib/mysql/mysql.sock
+port = 3306
+bind-address = 0.0.0.0
+
+# Character set para suporte completo a emojis e unicode
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+init_connect = 'SET NAMES utf8mb4'
+
+# ========================================
+# INNODB BUFFER POOL (70-80% DA RAM DISPONÍVEL)
+# ========================================
+
+# Buffer Pool - AJUSTE CONFORME SUA RAM
+# Para 4GB RAM: 3G
+# Para 8GB RAM: 6G
+# Para 16GB RAM: 12G
+innodb_buffer_pool_size = 2G
+
+# Instâncias do buffer pool para melhor concorrência
+innodb_buffer_pool_instances = 4
+
+# Chunk size para resize dinâmico
+innodb_buffer_pool_chunk_size = 128M
+
+# ========================================
+# INNODB LOG E FLUSH SETTINGS
+# ========================================
+
+# Log file size (mais logs = menos flush, melhor performance)
+innodb_log_file_size = 256M
+innodb_log_buffer_size = 16M
+
+# Flush settings - Balance entre performance e durabilidade
+# 0 = Máxima performance (risco de perda de dados)
+# 1 = Máxima durabilidade (mais lento)
+# 2 = Balance (recomendado para desenvolvimento)
+innodb_flush_log_at_trx_commit = 2
+
+# Método de flush otimizado
+innodb_flush_method = O_DIRECT
+
+# ========================================
+# INNODB CONFIGURAÇÕES ADICIONAIS
+# ========================================
+
+# File per table (melhor gerenciamento de espaço)
+innodb_file_per_table = 1
+
+# Thread concurrency (0 = auto)
+innodb_thread_concurrency = 0
+
+# IO Threads
+innodb_read_io_threads = 4
+innodb_write_io_threads = 4
+
+# Page size (default é 16KB, adequado para nosso uso)
+innodb_page_size = 16K
+
+# Strict mode
+innodb_strict_mode = 1
+
+# ========================================
+# QUERY CACHE (PARA CONSULTAS REPETIDAS)
+# ========================================
+
+# Query cache para acelerar consultas idênticas
+query_cache_type = 1
+query_cache_size = 128M
+query_cache_limit = 2M
+
+# Limiar para não cachear queries muito pequenas
+query_cache_min_res_unit = 4K
+
+# ========================================
+# CONNECTION E THREAD SETTINGS
+# ========================================
+
+# Máximo de conexões simultâneas
+max_connections = 200
+
+# Cache de threads para reutilização
+thread_cache_size = 16
+
+# Stack size para threads
+thread_stack = 256K
+
+# ========================================
+# TABLE CACHE SETTINGS
+# ========================================
+
+# Cache de tabelas abertas
+table_open_cache = 2000
+table_definition_cache = 1400
+
+# Open files limit
+open_files_limit = 65535
+
+# ========================================
+# TIMEOUT SETTINGS
+# ========================================
+
+# Timeout para conexões interativas
+interactive_timeout = 3600
+wait_timeout = 3600
+
+# Timeout para conexões inativas
+connect_timeout = 10
+
+# ========================================
+# MYISAM SETTINGS (CASO AINDA USE)
+# ========================================
+
+# Key buffer para tabelas MyISAM
+key_buffer_size = 64M
+
+# ========================================
+# LOGGING E DEBUGGING
+# ========================================
+
+# Slow query log para otimização
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 2
+
+# Log queries que não usam índices
+log_queries_not_using_indexes = 1
+
+# Error log
+log_error = /var/log/mysql/error.log
+
+# ========================================
+# CONFIGURAÇÕES DE SEGURANÇA
+# ========================================
+
+# SQL Mode mais permissivo para desenvolvimento
+sql_mode = STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO
+
+# Desabilitar hostname resolution
+skip_name_resolve = 1
+
+# ========================================
+# CONFIGURAÇÕES ESPECÍFICAS PARA DESENVOLVIMENTO
+# ========================================
+
+# Binlog desabilitado para desenvolvimento (melhora performance)
+skip_log_bin = 1
+
+# Sync binlog (se habilitado)
+sync_binlog = 0
+
+# ========================================
+# OTIMIZAÇÕES PARA WHATSAPP DATA
+# ========================================
+
+# JSON e TEXT otimizations
+max_allowed_packet = 64M
+
+# Sort buffer para queries com ORDER BY
+sort_buffer_size = 2M
+
+# Join buffer para queries complexas
+join_buffer_size = 2M
+
+# Read buffer
+read_buffer_size = 1M
+read_rnd_buffer_size = 2M
+
+# Tmp table settings para queries temporárias
+tmp_table_size = 64M
+max_heap_table_size = 64M
+
+# ========================================
+# CONFIGURAÇÕES DO CLIENTE MYSQL
+# ========================================
+
+[mysql]
+default-character-set = utf8mb4
+
+[mysqldump]
+default-character-set = utf8mb4
+
+[client]
+default-character-set = utf8mb4
+
+# ========================================
+# EXEMPLO DE CONFIGURAÇÃO PARA PRODUÇÃO
+# ========================================
+
+# Para PRODUÇÃO, ajuste as seguintes configurações:
+# innodb_flush_log_at_trx_commit = 1  # Máxima durabilidade
+# sync_binlog = 1                     # Se usar replicação
+# log_bin = mysql-bin                 # Habilitar binlog para backup
+# query_cache_type = 0               # Desabilitar query cache em alta concorrência
+
+# ========================================
+# MONITORAMENTO E TROUBLESHOOTING
+# ========================================
+
+# Performance Schema (para análise de performance)
+performance_schema = ON
+performance_schema_max_table_instances = 400
+performance_schema_max_table_handles = 4000
+
+# ========================================
+# COMANDOS ÚTEIS PARA VERIFICAÇÃO
+# ========================================
+
+# Verificar status do InnoDB:
+# SHOW ENGINE INNODB STATUS;
+
+# Verificar variáveis configuradas:
+# SHOW VARIABLES LIKE 'innodb%';
+
+# Verificar status do buffer pool:
+# SELECT * FROM INFORMATION_SCHEMA.INNODB_BUFFER_POOL_STATS;
+
+# Verificar queries lentas:
+# SELECT * FROM mysql.slow_log ORDER BY start_time DESC LIMIT 10;
+
+# Verificar uso de índices:
+# SELECT * FROM sys.statements_with_runtimes_in_95th_percentile LIMIT 10;
