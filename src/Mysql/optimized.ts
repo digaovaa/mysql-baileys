@@ -558,16 +558,52 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
 
     const removeAll = async () => {
         try {
-            // Remover device (CASCADE remove tudo relacionado)
-            await query(`DELETE FROM devices WHERE session = ?`, [config.session])
+            const currentDeviceId = await getDeviceId()
+            
+            // Limpar TODAS as tabelas relacionadas ao device ID de forma explícita
+            const keyTables = [
+                'sender_keys',
+                'sessions', 
+                'sender_key_memory',
+                'pre_keys',
+                'app_state_sync_versions',
+                'app_state_sync_keys'
+            ]
+
+            // Remover dados de todas as tabelas de chaves primeiro
+            for (const table of keyTables) {
+                try {
+                    const result = await query(`DELETE FROM ${table} WHERE device_id = ?`, [currentDeviceId])
+                   
+                } catch (error) {
+                    console.warn(`Erro ao limpar tabela ${table}:`, error.message)
+                }
+            }
+
+            // Remover device (isso também remove via CASCADE, mas já limpamos explicitamente acima)
+            const deviceResult = await query(`DELETE FROM devices WHERE session = ?`, [config.session])
+           
         } catch (error) {
             console.warn('Erro ao remover dados otimizados, usando fallback:', error.message)
-            // Fallback
-            await query(`DELETE FROM ${tableName} WHERE session = ?`, [config.session])
+            
+            // Fallback mais robusto - limpar TUDO da tabela legacy
+            try {
+                const result = await query(`DELETE FROM ${tableName} WHERE session = ?`, [config.session])
+          
+            } catch (fallbackError) {
+                console.error('Erro ao limpar tabela legacy:', fallbackError.message)
+                throw fallbackError
+            }
         }
         
+        // Limpar TODOS os caches relacionados
         clearCache()
+        deviceCache.delete(`device-${config.session}`)
+        
+        // Reset do device ID
         deviceId = null
+        
+        
     }
 
     const clearSenderKeyMemory = async (): Promise<sqlData> => {
