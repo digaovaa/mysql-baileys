@@ -164,7 +164,7 @@ async function createOptimizedSchema(config: MySQLConfig) {
             await conn.execute(`
                 CREATE TABLE IF NOT EXISTS ${table} (
                     key_id VARCHAR(255) NOT NULL,
-                    value TEXT NOT NULL,
+                    value LONGTEXT NOT NULL,
                     device_id INT NOT NULL,
                     session VARCHAR(50) NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -177,9 +177,47 @@ async function createOptimizedSchema(config: MySQLConfig) {
             `)
         }
 
+        // Atualizar tabelas existentes para usar LONGTEXT se necessário
+        await updateExistingSchema(keyTables)
+
         console.log('✅ Schema otimizado criado com sucesso')
     } catch (error) {
         console.warn('⚠️ Erro ao criar schema otimizado, usando fallback:', error.message)
+    }
+}
+
+async function updateExistingSchema(keyTables: string[]) {
+    try {
+        console.log('🔧 Verificando e atualizando schema existente...')
+        
+        for (const table of keyTables) {
+            try {
+                // Verificar se a tabela existe e tem coluna TEXT
+                const [columns] = await conn.query(`
+                    SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = ? 
+                    AND COLUMN_NAME = 'value'
+                `, [table]) as any[]
+
+                if (columns[0] && columns[0].DATA_TYPE === 'text') {
+                    console.log(`📝 Atualizando ${table}.value de TEXT para LONGTEXT...`)
+                    
+                    // Atualizar a coluna para LONGTEXT
+                    await conn.execute(`
+                        ALTER TABLE ${table} 
+                        MODIFY COLUMN value LONGTEXT NOT NULL
+                    `)
+                    
+                    console.log(`✅ ${table} atualizado com sucesso`)
+                }
+            } catch (error) {
+                console.warn(`⚠️ Erro ao atualizar tabela ${table}:`, error.message)
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ Erro ao verificar schema existente:', error.message)
     }
 }
 
@@ -190,7 +228,8 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
     removeCreds: () => Promise<void>,
     clearSenderKeyMemory: () => Promise<sqlData>,
     migrateFromLegacy: () => Promise<void>,
-    getPerformanceStats: () => Promise<any>
+    getPerformanceStats: () => Promise<any>,
+    diagnoseSchema: () => Promise<{ issues: string[] }>
 }> => {
     const sqlConn = await connection(config)
     const tableName = config.tableName || 'auth'
@@ -786,6 +825,51 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
         }
     }
 
+    const diagnoseSchema = async () => {
+        try {
+            console.log('🔍 Diagnóstico do schema...')
+            
+            const keyTables = ['sender_keys', 'sessions', 'sender_key_memory', 'pre_keys', 'app_state_sync_versions', 'app_state_sync_keys']
+            const issues: string[] = []
+
+            for (const table of keyTables) {
+                try {
+                    const [columns] = await query(`
+                        SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = DATABASE() 
+                        AND TABLE_NAME = ? 
+                        AND COLUMN_NAME = 'value'
+                    `, [table]) as any[]
+
+                    if (columns[0]) {
+                        const col = columns[0]
+                        if (col.DATA_TYPE === 'text') {
+                            issues.push(`⚠️ Tabela ${table}: coluna 'value' ainda é TEXT (máx ${col.CHARACTER_MAXIMUM_LENGTH} bytes)`)
+                        } else if (col.DATA_TYPE === 'longtext') {
+                            console.log(`✅ Tabela ${table}: coluna 'value' é LONGTEXT (OK)`)
+                        }
+                    }
+                } catch (error: any) {
+                    issues.push(`❌ Erro ao verificar tabela ${table}: ${error.message}`)
+                }
+            }
+
+            if (issues.length > 0) {
+                console.warn('🚨 Problemas encontrados no schema:')
+                issues.forEach(issue => console.warn(issue))
+                console.warn('💡 Execute o script migration/03-fix-value-column-size.sql para corrigir')
+            } else {
+                console.log('✅ Schema está correto!')
+            }
+
+            return { issues }
+        } catch (error: any) {
+            console.warn('Erro no diagnóstico:', error.message)
+            return { issues: [`Erro no diagnóstico: ${error.message}`] }
+        }
+    }
+
     // ========================================
     // INICIALIZAÇÃO OTIMIZADA
     // ========================================
@@ -823,6 +907,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
         },
         clearSenderKeyMemory,
         migrateFromLegacy,
-        getPerformanceStats
+        getPerformanceStats,
+        diagnoseSchema
     }
 }
