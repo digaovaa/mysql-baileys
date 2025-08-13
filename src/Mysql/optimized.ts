@@ -149,6 +149,69 @@ async function createOptimizedSchema(config: MySQLConfig) {
                 INDEX idx_jid (jid)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `)
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS messages (
+        id VARCHAR(255) PRIMARY KEY,
+        remote_jid VARCHAR(255) NOT NULL,
+        from_me BOOLEAN NOT NULL,
+        timestamp BIGINT NOT NULL,
+        push_name VARCHAR(255),
+        message JSON,
+        message_type VARCHAR(100),
+        device_id INT NOT NULL,
+        session VARCHAR(50) NOT NULL,
+        key_unique VARCHAR(255) UNIQUE,
+        participant VARCHAR(255),
+        status INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        
+        INDEX idx_remote_jid_timestamp (remote_jid, timestamp),
+        INDEX idx_device_id (device_id),
+        INDEX idx_session (session),
+        INDEX idx_timestamp (timestamp),
+        FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`)
+
+    await conn.execute(`
+    CREATE TABLE IF NOT EXISTS chats (
+    id VARCHAR(255) NOT NULL,
+    device_id INT NOT NULL,
+    session VARCHAR(50) NOT NULL,
+    name VARCHAR(255),
+    conversation_timestamp BIGINT,
+    unread_count INT DEFAULT 0,
+    archived BOOLEAN DEFAULT FALSE,
+    pinned BOOLEAN DEFAULT FALSE,
+    mute_end_time BIGINT,
+    ephemeral_expiration INT,
+    ephemeral_setting_timestamp BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (id, device_id),
+    INDEX idx_device_id (device_id),
+    INDEX idx_session (session),
+    FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`)
+
+    await conn.execute(`
+    CREATE TABLE IF NOT EXISTS contacts (
+    id VARCHAR(255) NOT NULL,
+    device_id INT NOT NULL,
+    session VARCHAR(50) NOT NULL,
+    name VARCHAR(255),
+    notify VARCHAR(255),
+    verified_name VARCHAR(255),
+    img_url TEXT,
+    status TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (id, device_id),
+    INDEX idx_device_id (device_id),
+    INDEX idx_session (session),
+    FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`)
 
         // Criar tabelas de dados sob demanda
         const keyTables = [
