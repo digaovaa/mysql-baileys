@@ -151,7 +151,8 @@ async function createOptimizedSchema(config: MySQLConfig) {
         `)
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS messages (
-        id VARCHAR(255) PRIMARY KEY,
+        id INT PRIMARY KEY,
+        wid VARCHAR(255) NOT NULL,
         remote_jid VARCHAR(255) NOT NULL,
         from_me BOOLEAN NOT NULL,
         timestamp BIGINT NOT NULL,
