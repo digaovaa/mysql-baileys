@@ -151,7 +151,7 @@ async function createOptimizedSchema(config: MySQLConfig) {
         `)
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS messages (
-        id INT PRIMARY KEY,
+        id INT PRIMARY KEY AUTO_INCREMENT,
         wid VARCHAR(255) NOT NULL,
         remote_jid VARCHAR(255) NOT NULL,
         from_me BOOLEAN NOT NULL,
@@ -170,7 +170,8 @@ async function createOptimizedSchema(config: MySQLConfig) {
         INDEX idx_session (session),
         INDEX idx_timestamp (timestamp),
         FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+`)
 
     await conn.execute(`
     CREATE TABLE IF NOT EXISTS chats (
