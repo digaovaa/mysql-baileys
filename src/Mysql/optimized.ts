@@ -163,8 +163,7 @@ async function createOptimizedSchema(config: MySQLConfig) {
         key_unique VARCHAR(255) UNIQUE,
         participant VARCHAR(255),
         status INT DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,        
         INDEX idx_remote_jid_timestamp (remote_jid, timestamp),
         INDEX idx_device_id (device_id),
         INDEX idx_session (session),
@@ -203,6 +202,7 @@ async function createOptimizedSchema(config: MySQLConfig) {
     notify VARCHAR(255),
     verified_name VARCHAR(255),
     img_url TEXT,
+    lid VARCHAR(255),
     status TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
