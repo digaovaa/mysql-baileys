@@ -715,17 +715,61 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                     `, [config.session]) as any[]
 
                     if (legacyKeys.length > 0) {
-                        const values = legacyKeys.map(row => {
-                            const keyId = row.id.replace(keyType.prefix, '')
-                            return [keyId, row.value, currentDeviceId, config.session]
-                        })
+                        console.log(`🔄 Migrando ${legacyKeys.length} registros de ${keyType.type}...`)
+                        
+                        // Validar device_id antes de prosseguir
+                        if (!currentDeviceId || currentDeviceId <= 0) {
+                            console.warn(`⚠️ Device ID inválido para ${keyType.type}: ${currentDeviceId}`)
+                            continue
+                        }
 
-                        // Inserir em lotes
-                        const batchSize = 100
+                        const values = legacyKeys.map((row, index) => {
+                            const keyId = row.id.replace(keyType.prefix, '')
+                            
+                            // Validar valores antes de inserir
+                            if (!keyId || keyId === '') {
+                                console.warn(`⚠️ Key ID vazio para ${keyType.type} no índice ${index}: ${row.id}`)
+                                return null
+                            }
+                            
+                            if (!row.value) {
+                                console.warn(`⚠️ Value vazio para ${keyType.type} no índice ${index}: ${row.id}`)
+                                return null
+                            }
+                            
+                            return [keyId, row.value, currentDeviceId, config.session]
+                        }).filter(Boolean) // Remove valores null
+
+                        if (values.length === 0) {
+                            console.warn(`⚠️ Nenhum valor válido para migrar em ${keyType.type}`)
+                            continue
+                        }
+
+                        // Inserir em lotes menores para debug
+                        const batchSize = 50
                         for (let i = 0; i < values.length; i += batchSize) {
                             const batch = values.slice(i, i + batchSize)
+                            
+                            // Debug: log do primeiro batch
+                            if (i === 0) {
+                                console.log(`🔍 Debug - Primeiro batch de ${keyType.type}:`, {
+                                    batchSize: batch.length,
+                                    firstRecord: batch[0],
+                                    tableColumns: ['key_id', 'value', 'device_id', 'session'],
+                                    expectedValues: 4
+                                })
+                            }
+                            
                             const placeholders = batch.map(() => '(?, ?, ?, ?)').join(',')
                             const flatValues = batch.flat()
+
+                            // Validar se o número de placeholders corresponde aos valores
+                            const expectedPlaceholders = batch.length * 4
+                            if (flatValues.length !== expectedPlaceholders) {
+                                console.error(`❌ Erro de contagem: ${flatValues.length} valores para ${expectedPlaceholders} placeholders`)
+                                console.error(`Batch:`, batch)
+                                continue
+                            }
 
                             await query(`
                                 INSERT INTO ${keyType.table} (key_id, value, device_id, session) 
@@ -734,10 +778,11 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                             `, flatValues)
                         }
 
-                        console.log(`✅ ${keyType.type}: ${legacyKeys.length} chaves migradas`)
+                        console.log(`✅ ${keyType.type}: ${values.length} chaves migradas`)
                     }
                 } catch (error) {
                     console.warn(`⚠️ Erro ao migrar ${keyType.type}:`, error.message)
+                    console.warn(`Stack trace:`, error.stack)
                 }
             }
 
