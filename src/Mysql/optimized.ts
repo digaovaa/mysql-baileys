@@ -737,7 +737,20 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                                 return null
                             }
                             
-                            return [keyId, row.value, currentDeviceId, config.session]
+                            // CRÍTICO: Serializar o valor JSON corretamente
+                            let serializedValue
+                            try {
+                                if (typeof row.value === 'object') {
+                                    serializedValue = JSON.stringify(row.value, BufferJSON.replacer)
+                                } else {
+                                    serializedValue = row.value
+                                }
+                            } catch (error) {
+                                console.warn(`⚠️ Erro ao serializar valor para ${keyType.type} no índice ${index}:`, error.message)
+                                return null
+                            }
+                            
+                            return [keyId, serializedValue, currentDeviceId, config.session]
                         }).filter(Boolean) // Remove valores null
 
                         if (values.length === 0) {
@@ -756,7 +769,9 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                                     batchSize: batch.length,
                                     firstRecord: batch[0],
                                     tableColumns: ['key_id', 'value', 'device_id', 'session'],
-                                    expectedValues: 4
+                                    expectedValues: 4,
+                                    firstRecordTypes: batch[0] ? batch[0].map((v, idx) => `${idx}: ${typeof v} (${v?.constructor?.name || 'unknown'})`) : 'empty',
+                                    firstRecordLengths: batch[0] ? batch[0].map((v, idx) => `${idx}: ${typeof v === 'string' ? v.length : 'N/A'}`) : 'empty'
                                 })
                             }
                             
@@ -769,6 +784,23 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                                 console.error(`❌ Erro de contagem: ${flatValues.length} valores para ${expectedPlaceholders} placeholders`)
                                 console.error(`Batch:`, batch)
                                 continue
+                            }
+
+                            // Teste individual para o primeiro registro se for o primeiro batch
+                            if (i === 0 && batch.length > 0) {
+                                try {
+                                    console.log(`🧪 Testando inserção individual para ${keyType.type}...`)
+                                    await query(`
+                                        INSERT INTO ${keyType.table} (key_id, value, device_id, session) 
+                                        VALUES (?, ?, ?, ?)
+                                        ON DUPLICATE KEY UPDATE value = VALUES(value)
+                                    `, batch[0])
+                                    console.log(`✅ Teste individual bem-sucedido para ${keyType.type}`)
+                                } catch (testError) {
+                                    console.error(`❌ Erro no teste individual para ${keyType.type}:`, testError.message)
+                                    console.error(`Dados do teste:`, batch[0])
+                                    continue
+                                }
                             }
 
                             await query(`
