@@ -762,7 +762,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                             continue
                         }
 
-                        const values = legacyKeys.map((row, index) => {
+                        const values: any[][] = legacyKeys.map((row, index) => {
                             const keyId = row.id.replace(keyType.prefix, '')
                             
                             // Validar valores antes de inserir
@@ -789,8 +789,8 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                                 return null
                             }
                             
-                            return [keyId, serializedValue, currentDeviceId, config.session]
-                        }).filter(Boolean) // Remove valores null
+                            return [keyId, serializedValue, currentDeviceId, config.session] as any[]
+                        }).filter((v): v is any[] => Array.isArray(v)) // Remove valores null com narrowing correto
 
                         if (values.length === 0) {
                             console.warn(`⚠️ Nenhum valor válido para migrar em ${keyType.type}`)
@@ -829,11 +829,12 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                             if (i === 0 && batch.length > 0) {
                                 try {
                                     console.log(`🧪 Testando inserção individual para ${keyType.type}...`)
+                                    const firstRow = batch[0] as any[]
                                     await query(`
                                         INSERT INTO ${keyType.table} (key_id, value, device_id, session) 
                                         VALUES (?, ?, ?, ?)
                                         ON DUPLICATE KEY UPDATE value = VALUES(value)
-                                    `, batch[0])
+                                    `, firstRow)
                                     console.log(`✅ Teste individual bem-sucedido para ${keyType.type}`)
                                 } catch (testError) {
                                     console.error(`❌ Erro no teste individual para ${keyType.type}:`, testError.message)
