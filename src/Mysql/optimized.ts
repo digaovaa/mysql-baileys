@@ -212,6 +212,45 @@ async function updateExistingSchema(keyTables: string[]) {
                     
                     console.log(`✅ ${table} atualizado com sucesso`)
                 }
+
+                // Normalizar a coluna de data de criação: created_at (com default)
+                // 1) verificar se já existe created_at
+                const [createdAtCol] = await conn.query(`
+                    SELECT COLUMN_NAME, COLUMN_DEFAULT
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = ?
+                    AND COLUMN_NAME = 'created_at'
+                `, [table]) as any[]
+
+                if (!createdAtCol[0]) {
+                    // 2) verificar se existe createdAt (camelCase) para renomear
+                    const [legacyCreatedAt] = await conn.query(`
+                        SELECT COLUMN_NAME
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE()
+                        AND TABLE_NAME = ?
+                        AND COLUMN_NAME = 'createdAt'
+                    `, [table]) as any[]
+
+                    try {
+                        if (legacyCreatedAt[0]) {
+                            console.log(`🛠️  Renomeando coluna ${table}.createdAt -> created_at com DEFAULT CURRENT_TIMESTAMP`)
+                            await conn.execute(`
+                                ALTER TABLE ${table}
+                                CHANGE COLUMN createdAt created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
+                            `)
+                        } else {
+                            console.log(`🛠️  Adicionando coluna ${table}.created_at com DEFAULT CURRENT_TIMESTAMP`)
+                            await conn.execute(`
+                                ALTER TABLE ${table}
+                                ADD COLUMN created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
+                            `)
+                        }
+                    } catch (e: any) {
+                        console.warn(`⚠️ Erro ao normalizar coluna created_at em ${table}:`, e.message)
+                    }
+                }
             } catch (error) {
                 console.warn(`⚠️ Erro ao atualizar tabela ${table}:`, error.message)
             }
