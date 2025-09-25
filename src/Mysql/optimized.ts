@@ -882,8 +882,8 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                 hasMe: !!creds.me
             })
             
-            // Função auxiliar para converter Buffer com tratamento de erro
-            const safeBufferFrom = (data: any, fieldName: string) => {
+            // Função auxiliar para converter para base64 string (não Buffer)
+            const safeBase64From = (data: any, fieldName: string) => {
                 try {
                     if (!data) {
                         console.log(`🔍 ${fieldName}: dados vazios`)
@@ -893,26 +893,24 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                     console.log(`🔍 ${fieldName}: tipo=${typeof data}, isBuffer=${Buffer.isBuffer(data)}, constructor=${data?.constructor?.name}`)
                     
                     if (Buffer.isBuffer(data)) {
-                        console.log(`✅ ${fieldName}: já é Buffer, retornando diretamente`)
-                        return data
+                        console.log(`✅ ${fieldName}: já é Buffer, convertendo para base64`)
+                        return data.toString('base64')
                     }
                     
                     if (typeof data === 'string') {
-                        console.log(`✅ ${fieldName}: string base64, convertendo`)
-                        return Buffer.from(data, 'base64')
+                        console.log(`✅ ${fieldName}: string base64, retornando diretamente`)
+                        return data
                     }
                     
                     if (data.data && typeof data.data === 'string') {
-                        console.log(`✅ ${fieldName}: objeto com data, convertendo de:`, data.data.substring(0, 20) + '...')
-                        const buffer = Buffer.from(data.data, 'base64')
-                        console.log(`✅ ${fieldName}: Buffer criado com tamanho:`, buffer.length)
-                        return buffer
+                        console.log(`✅ ${fieldName}: objeto com data, retornando string base64:`, data.data.substring(0, 20) + '...')
+                        return data.data
                     }
                     
                     console.warn(`⚠️ Formato inesperado para ${fieldName}:`, typeof data, data?.constructor?.name, data)
                     return null
                 } catch (error) {
-                    console.warn(`⚠️ Erro ao converter Buffer para ${fieldName}:`, error.message)
+                    console.warn(`⚠️ Erro ao converter para base64 ${fieldName}:`, error.message)
                     return null
                 }
             }
@@ -920,15 +918,15 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             const deviceData = {
                 whatsapp_id: creds.registrationId?.toString() || config.session,
                 session: config.session,
-                noise_key_public: safeBufferFrom(creds.noiseKey?.public, 'noise_key_public'),
-                noise_key_private: safeBufferFrom(creds.noiseKey?.private, 'noise_key_private'),
-                pairing_ephemeral_key_pair_public: safeBufferFrom(creds.pairingEphemeralKeyPair?.public, 'pairing_ephemeral_key_pair_public'),
-                pairing_ephemeral_key_pair_private: safeBufferFrom(creds.pairingEphemeralKeyPair?.private, 'pairing_ephemeral_key_pair_private'),
-                signed_identity_key_public: safeBufferFrom(creds.signedIdentityKey?.public, 'signed_identity_key_public'),
-                signed_identity_key_private: safeBufferFrom(creds.signedIdentityKey?.private, 'signed_identity_key_private'),
-                signed_pre_key_public: safeBufferFrom(creds.signedPreKey?.keyPair?.public, 'signed_pre_key_public'),
-                signed_pre_key_private: safeBufferFrom(creds.signedPreKey?.keyPair?.private, 'signed_pre_key_private'),
-                signed_pre_key_signature: safeBufferFrom(creds.signedPreKey?.signature, 'signed_pre_key_signature'),
+                noise_key_public: safeBase64From(creds.noiseKey?.public, 'noise_key_public'),
+                noise_key_private: safeBase64From(creds.noiseKey?.private, 'noise_key_private'),
+                pairing_ephemeral_key_pair_public: safeBase64From(creds.pairingEphemeralKeyPair?.public, 'pairing_ephemeral_key_pair_public'),
+                pairing_ephemeral_key_pair_private: safeBase64From(creds.pairingEphemeralKeyPair?.private, 'pairing_ephemeral_key_pair_private'),
+                signed_identity_key_public: safeBase64From(creds.signedIdentityKey?.public, 'signed_identity_key_public'),
+                signed_identity_key_private: safeBase64From(creds.signedIdentityKey?.private, 'signed_identity_key_private'),
+                signed_pre_key_public: safeBase64From(creds.signedPreKey?.keyPair?.public, 'signed_pre_key_public'),
+                signed_pre_key_private: safeBase64From(creds.signedPreKey?.keyPair?.private, 'signed_pre_key_private'),
+                signed_pre_key_signature: safeBase64From(creds.signedPreKey?.signature, 'signed_pre_key_signature'),
                 signed_pre_key_id: creds.signedPreKey?.keyId || null,
                 registration_id: creds.registrationId || null,
                 adv_secret_key: creds.advSecretKey || null,
@@ -939,21 +937,21 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                 account_settings: creds.accountSettings ? JSON.stringify(creds.accountSettings) : null,
                 pairing_code: creds.pairingCode || null,
                 last_prop_hash: creds.lastPropHash || null,
-                routing_info: safeBufferFrom(creds.routingInfo, 'routing_info'),
+                routing_info: safeBase64From(creds.routingInfo, 'routing_info'),
                 jid: creds.me?.id || null,
                 lid: creds.me?.lid || null,
                 name: creds.me?.name || null,
-                account_details: safeBufferFrom(creds.account?.details, 'account_details'),
-                account_signature_key: safeBufferFrom(creds.account?.accountSignatureKey, 'account_signature_key'),
-                account_signature: safeBufferFrom(creds.account?.accountSignature, 'account_signature'),
-                account_device_signature: safeBufferFrom(creds.account?.deviceSignature, 'account_device_signature'),
+                account_details: safeBase64From(creds.account?.details, 'account_details'),
+                account_signature_key: safeBase64From(creds.account?.accountSignatureKey, 'account_signature_key'),
+                account_signature: safeBase64From(creds.account?.accountSignature, 'account_signature'),
+                account_device_signature: safeBase64From(creds.account?.deviceSignature, 'account_device_signature'),
                 signal_identities: creds.signalIdentities ? JSON.stringify(creds.signalIdentities) : null,
                 platform: creds.platform || null,
                 device_id: creds.deviceId || null,
                 phone_id: creds.phoneId || null,
-                identity_id: safeBufferFrom(creds.identityId, 'identity_id'),
+                identity_id: safeBase64From(creds.identityId, 'identity_id'),
                 registered: creds.registered || false,
-                backup_token: safeBufferFrom(creds.backupToken, 'backup_token'),
+                backup_token: safeBase64From(creds.backupToken, 'backup_token'),
                 registration_options: creds.registration ? JSON.stringify(creds.registration) : null,
                 last_account_sync_timestamp: creds.lastAccountSyncTimestamp || null,
                 my_app_state_key_id: creds.myAppStateKeyId || null
@@ -964,10 +962,10 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             const updateFields = Object.keys(deviceData).map(field => `${field} = VALUES(${field})`).join(', ')
 
             console.log('🔍 Debug - Inserindo device com dados:', {
-                noise_key_public_size: deviceData.noise_key_public?.length || 'null',
-                noise_key_private_size: deviceData.noise_key_private?.length || 'null',
-                account_details_size: deviceData.account_details?.length || 'null',
-                account_signature_key_size: deviceData.account_signature_key?.length || 'null'
+                noise_key_public: deviceData.noise_key_public ? deviceData.noise_key_public.substring(0, 20) + '...' : 'null',
+                noise_key_private: deviceData.noise_key_private ? deviceData.noise_key_private.substring(0, 20) + '...' : 'null',
+                account_details: deviceData.account_details ? deviceData.account_details.substring(0, 20) + '...' : 'null',
+                account_signature_key: deviceData.account_signature_key ? deviceData.account_signature_key.substring(0, 20) + '...' : 'null'
             })
 
             await query(`
