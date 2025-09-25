@@ -934,8 +934,41 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             deviceCache.delete(`device-${config.session}`)
         } catch (error) {
             console.warn('Erro ao salvar dados otimizados, usando fallback:', error.message)
-            // Fallback
+            // Fallback: salvar na tabela legada E criar device básico na tabela otimizada
             await writeLegacyData('creds', creds)
+            
+            // Criar device básico na tabela otimizada para evitar foreign key errors
+            try {
+                const basicDeviceData = {
+                    whatsapp_id: creds.registrationId?.toString() || config.session,
+                    session: config.session,
+                    jid: creds.me?.id || null,
+                    lid: creds.me?.lid || null,
+                    name: creds.me?.name || null,
+                    platform: creds.platform || null,
+                    registered: creds.registered || false
+                }
+                
+                const fields = Object.keys(basicDeviceData).join(', ')
+                const placeholders = Object.keys(basicDeviceData).map(() => '?').join(', ')
+                const updateFields = Object.keys(basicDeviceData).map(field => `${field} = VALUES(${field})`).join(', ')
+                
+                await query(`
+                    INSERT INTO devices (${fields}) 
+                    VALUES (${placeholders})
+                    ON DUPLICATE KEY UPDATE ${updateFields}
+                `, Object.values(basicDeviceData))
+                
+                // Atualizar deviceId
+                const result = await query('SELECT id FROM devices WHERE session = ? LIMIT 1', [config.session])
+                if (result[0]) {
+                    deviceId = result[0].id
+                }
+                
+                console.log('✅ Device básico criado no fallback')
+            } catch (fallbackError) {
+                console.warn('Erro no fallback de criação do device:', fallbackError.message)
+            }
         }
     }
 
