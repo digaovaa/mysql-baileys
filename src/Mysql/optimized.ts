@@ -452,6 +452,27 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
         return await readLegacyData('creds')
     }
 
+    // Normaliza colunas binárias do device caso tenham sido gravadas como base64 (idempotente)
+    const normalizeDeviceBlobs = async () => {
+        try {
+            await query(`
+                UPDATE devices SET 
+                  noise_key_public = IF(CAST(noise_key_public AS CHAR) REGEXP '^[A-Za-z0-9+/=_-]+$', FROM_BASE64(CAST(noise_key_public AS CHAR)), noise_key_public),
+                  noise_key_private = IF(CAST(noise_key_private AS CHAR) REGEXP '^[A-Za-z0-9+/=_-]+$', FROM_BASE64(CAST(noise_key_private AS CHAR)), noise_key_private),
+                  pairing_ephemeral_key_pair_public = IF(CAST(pairing_ephemeral_key_pair_public AS CHAR) REGEXP '^[A-Za-z0-9+/=_-]+$', FROM_BASE64(CAST(pairing_ephemeral_key_pair_public AS CHAR)), pairing_ephemeral_key_pair_public),
+                  pairing_ephemeral_key_pair_private = IF(CAST(pairing_ephemeral_key_pair_private AS CHAR) REGEXP '^[A-Za-z0-9+/=_-]+$', FROM_BASE64(CAST(pairing_ephemeral_key_pair_private AS CHAR)), pairing_ephemeral_key_pair_private),
+                  signed_identity_key_public = IF(CAST(signed_identity_key_public AS CHAR) REGEXP '^[A-Za-z0-9+/=_-]+$', FROM_BASE64(CAST(signed_identity_key_public AS CHAR)), signed_identity_key_public),
+                  signed_identity_key_private = IF(CAST(signed_identity_key_private AS CHAR) REGEXP '^[A-Za-z0-9+/=_-]+$', FROM_BASE64(CAST(signed_identity_key_private AS CHAR)), signed_identity_key_private),
+                  signed_pre_key_public = IF(CAST(signed_pre_key_public AS CHAR) REGEXP '^[A-Za-z0-9+/=_-]+$', FROM_BASE64(CAST(signed_pre_key_public AS CHAR)), signed_pre_key_public),
+                  signed_pre_key_private = IF(CAST(signed_pre_key_private AS CHAR) REGEXP '^[A-Za-z0-9+/=_-]+$', FROM_BASE64(CAST(signed_pre_key_private AS CHAR)), signed_pre_key_private),
+                  signed_pre_key_signature = IF(CAST(signed_pre_key_signature AS CHAR) REGEXP '^[A-Za-z0-9+/=_-]+$', FROM_BASE64(CAST(signed_pre_key_signature AS CHAR)), signed_pre_key_signature)
+                WHERE session = ?
+            `, [config.session])
+        } catch (error: any) {
+            console.warn('⚠️ Erro ao normalizar blobs do device:', error.message)
+        }
+    }
+
     const readLegacyData = async (id: string) => {
         try {
             const data = await query(`SELECT value FROM ${tableName} WHERE id = ? AND session = ?`, [id, config.session])
@@ -1011,6 +1032,9 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             if (result[0]) {
                 deviceId = result[0].id
             }
+
+            // Normalizar blobs possivelmente gravados como base64
+            await normalizeDeviceBlobs()
 
             deviceCache.delete(`device-${config.session}`)
         } catch (error) {
