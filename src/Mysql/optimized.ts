@@ -890,29 +890,54 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                         return null
                     }
                     
-                    console.log(`🔍 ${fieldName}: tipo=${typeof data}, isBuffer=${Buffer.isBuffer(data)}, constructor=${data?.constructor?.name}`)
-                    
+                    // Já é Buffer
                     if (Buffer.isBuffer(data)) {
-                        console.log(`✅ ${fieldName}: já é Buffer, retornando diretamente`)
                         return data
                     }
                     
+                    // Uint8Array
+                    if (typeof data === 'object' && data?.constructor?.name === 'Uint8Array') {
+                        return Buffer.from(data as Uint8Array)
+                    }
+                    
+                    // { type: 'Buffer', data: number[] }
+                    if (data && typeof data === 'object' && data.type === 'Buffer' && Array.isArray(data.data)) {
+                        return Buffer.from(Uint8Array.from(data.data))
+                    }
+                    
+                    // number[]
+                    if (Array.isArray(data) && data.every(n => typeof n === 'number')) {
+                        return Buffer.from(Uint8Array.from(data as number[]))
+                    }
+                    
+                    // Objeto com campo data base64
+                    if (data && typeof data === 'object' && typeof data.data === 'string') {
+                        const b = Buffer.from(data.data, 'base64')
+                        return b
+                    }
+                    
+                    // String: tentar base64
                     if (typeof data === 'string') {
-                        console.log(`✅ ${fieldName}: string base64, convertendo para Buffer`)
-                        return Buffer.from(data, 'base64')
+                        // Heurística rápida de base64
+                        const base64Like = /^[A-Za-z0-9+\/_-]+=*$/.test(data) && (data.length % 4 === 0)
+                        if (base64Like) {
+                            const buf = Buffer.from(data, 'base64')
+                            // Verificação: re-encode deve bater (ignorando padding variado)
+                            const re = buf.toString('base64').replace(/=+$/,'')
+                            const inStr = data.replace(/=+$/,'')
+                            if (re === inStr) {
+                                return buf
+                            }
+                        }
+                        // Se não for base64 válido, não salvar string crua em BLOB
+                        console.warn(`⚠️ ${fieldName}: string não parece base64 válida, ignorando`)
+                        return null
                     }
                     
-                    if (data.data && typeof data.data === 'string') {
-                        console.log(`✅ ${fieldName}: objeto com data, convertendo para Buffer de:`, data.data.substring(0, 20) + '...')
-                        const buffer = Buffer.from(data.data, 'base64')
-                        console.log(`✅ ${fieldName}: Buffer criado com tamanho:`, buffer.length)
-                        return buffer
-                    }
-                    
-                    console.warn(`⚠️ Formato inesperado para ${fieldName}:`, typeof data, data?.constructor?.name, data)
+                    console.warn(`⚠️ Formato inesperado para ${fieldName}:`, typeof data, data?.constructor?.name)
                     return null
                 } catch (error) {
-                    console.warn(`⚠️ Erro ao converter Buffer para ${fieldName}:`, error.message)
+                    console.warn(`⚠️ Erro ao converter Buffer para ${fieldName}:`, (error as any).message)
                     return null
                 }
             }
@@ -963,11 +988,16 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             const placeholders = Object.keys(deviceData).map(() => '?').join(', ')
             const updateFields = Object.keys(deviceData).map(field => `${field} = VALUES(${field})`).join(', ')
 
-            console.log('🔍 Debug - Inserindo device com dados:', {
-                noise_key_public_size: deviceData.noise_key_public?.length || 'null',
-                noise_key_private_size: deviceData.noise_key_private?.length || 'null',
-                account_details_size: deviceData.account_details?.length || 'null',
-                account_signature_key_size: deviceData.account_signature_key?.length || 'null'
+            console.log('🔍 Debug - Inserindo device com dados (bytes):', {
+                noise_key_public_size: deviceData.noise_key_public ? (deviceData.noise_key_public as Buffer).length : 'null',
+                noise_key_private_size: deviceData.noise_key_private ? (deviceData.noise_key_private as Buffer).length : 'null',
+                pairing_ephemeral_key_pair_public_size: deviceData.pairing_ephemeral_key_pair_public ? (deviceData.pairing_ephemeral_key_pair_public as Buffer).length : 'null',
+                pairing_ephemeral_key_pair_private_size: deviceData.pairing_ephemeral_key_pair_private ? (deviceData.pairing_ephemeral_key_pair_private as Buffer).length : 'null',
+                signed_identity_key_public_size: deviceData.signed_identity_key_public ? (deviceData.signed_identity_key_public as Buffer).length : 'null',
+                signed_identity_key_private_size: deviceData.signed_identity_key_private ? (deviceData.signed_identity_key_private as Buffer).length : 'null',
+                signed_pre_key_public_size: deviceData.signed_pre_key_public ? (deviceData.signed_pre_key_public as Buffer).length : 'null',
+                signed_pre_key_private_size: deviceData.signed_pre_key_private ? (deviceData.signed_pre_key_private as Buffer).length : 'null',
+                signed_pre_key_signature_size: deviceData.signed_pre_key_signature ? (deviceData.signed_pre_key_signature as Buffer).length : 'null'
             })
 
             await query(`
