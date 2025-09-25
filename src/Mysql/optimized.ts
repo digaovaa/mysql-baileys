@@ -725,7 +725,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                 return
             }
 
-            // Migrar credenciais
+            // Migrar credenciais PRIMEIRO para garantir que o device existe
             const credsData = await readLegacyData('creds')
             if (credsData) {
                 // Verificar se já existe um device na tabela otimizada
@@ -759,31 +759,31 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                         // Mapear campos dos dados legados
                         switch (field) {
                             case 'noise_key_public':
-                                value = credsData.noiseKey?.public ? Buffer.from(credsData.noiseKey.public) : null
+                                value = credsData.noiseKey?.public ? (Buffer.isBuffer(credsData.noiseKey.public) ? credsData.noiseKey.public : Buffer.from(credsData.noiseKey.public)) : null
                                 break
                             case 'noise_key_private':
-                                value = credsData.noiseKey?.private ? Buffer.from(credsData.noiseKey.private) : null
+                                value = credsData.noiseKey?.private ? (Buffer.isBuffer(credsData.noiseKey.private) ? credsData.noiseKey.private : Buffer.from(credsData.noiseKey.private)) : null
                                 break
                             case 'pairing_ephemeral_key_pair_public':
-                                value = credsData.pairingEphemeralKeyPair?.public ? Buffer.from(credsData.pairingEphemeralKeyPair.public) : null
+                                value = credsData.pairingEphemeralKeyPair?.public ? (Buffer.isBuffer(credsData.pairingEphemeralKeyPair.public) ? credsData.pairingEphemeralKeyPair.public : Buffer.from(credsData.pairingEphemeralKeyPair.public)) : null
                                 break
                             case 'pairing_ephemeral_key_pair_private':
-                                value = credsData.pairingEphemeralKeyPair?.private ? Buffer.from(credsData.pairingEphemeralKeyPair.private) : null
+                                value = credsData.pairingEphemeralKeyPair?.private ? (Buffer.isBuffer(credsData.pairingEphemeralKeyPair.private) ? credsData.pairingEphemeralKeyPair.private : Buffer.from(credsData.pairingEphemeralKeyPair.private)) : null
                                 break
                             case 'signed_identity_key_public':
-                                value = credsData.signedIdentityKey?.public ? Buffer.from(credsData.signedIdentityKey.public) : null
+                                value = credsData.signedIdentityKey?.public ? (Buffer.isBuffer(credsData.signedIdentityKey.public) ? credsData.signedIdentityKey.public : Buffer.from(credsData.signedIdentityKey.public)) : null
                                 break
                             case 'signed_identity_key_private':
-                                value = credsData.signedIdentityKey?.private ? Buffer.from(credsData.signedIdentityKey.private) : null
+                                value = credsData.signedIdentityKey?.private ? (Buffer.isBuffer(credsData.signedIdentityKey.private) ? credsData.signedIdentityKey.private : Buffer.from(credsData.signedIdentityKey.private)) : null
                                 break
                             case 'signed_pre_key_public':
-                                value = credsData.signedPreKey?.keyPair?.public ? Buffer.from(credsData.signedPreKey.keyPair.public) : null
+                                value = credsData.signedPreKey?.keyPair?.public ? (Buffer.isBuffer(credsData.signedPreKey.keyPair.public) ? credsData.signedPreKey.keyPair.public : Buffer.from(credsData.signedPreKey.keyPair.public)) : null
                                 break
                             case 'signed_pre_key_private':
-                                value = credsData.signedPreKey?.keyPair?.private ? Buffer.from(credsData.signedPreKey.keyPair.private) : null
+                                value = credsData.signedPreKey?.keyPair?.private ? (Buffer.isBuffer(credsData.signedPreKey.keyPair.private) ? credsData.signedPreKey.keyPair.private : Buffer.from(credsData.signedPreKey.keyPair.private)) : null
                                 break
                             case 'signed_pre_key_signature':
-                                value = credsData.signedPreKey?.signature ? Buffer.from(credsData.signedPreKey.signature) : null
+                                value = credsData.signedPreKey?.signature ? (Buffer.isBuffer(credsData.signedPreKey.signature) ? credsData.signedPreKey.signature : Buffer.from(credsData.signedPreKey.signature)) : null
                                 break
                             case 'signed_pre_key_id':
                                 value = credsData.signedPreKey?.keyId || null
@@ -816,7 +816,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                                 value = credsData.lastPropHash || null
                                 break
                             case 'routing_info':
-                                value = credsData.routingInfo ? Buffer.from(credsData.routingInfo) : null
+                                value = credsData.routingInfo ? (Buffer.isBuffer(credsData.routingInfo) ? credsData.routingInfo : Buffer.from(credsData.routingInfo)) : null
                                 break
                             case 'jid':
                                 value = credsData.me?.id || null
@@ -828,16 +828,16 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                                 value = credsData.me?.name || null
                                 break
                             case 'account_details':
-                                value = credsData.account?.details ? Buffer.from(credsData.account.details) : null
+                                value = credsData.account?.details ? (Buffer.isBuffer(credsData.account.details) ? credsData.account.details : Buffer.from(credsData.account.details)) : null
                                 break
                             case 'account_signature_key':
-                                value = credsData.account?.accountSignatureKey ? Buffer.from(credsData.account.accountSignatureKey) : null
+                                value = credsData.account?.accountSignatureKey ? (Buffer.isBuffer(credsData.account.accountSignatureKey) ? credsData.account.accountSignatureKey : Buffer.from(credsData.account.accountSignatureKey)) : null
                                 break
                             case 'account_signature':
-                                value = credsData.account?.accountSignature ? Buffer.from(credsData.account.accountSignature) : null
+                                value = credsData.account?.accountSignature ? (Buffer.isBuffer(credsData.account.accountSignature) ? credsData.account.accountSignature : Buffer.from(credsData.account.accountSignature)) : null
                                 break
                             case 'account_device_signature':
-                                value = credsData.account?.deviceSignature ? Buffer.from(credsData.account.deviceSignature) : null
+                                value = credsData.account?.deviceSignature ? (Buffer.isBuffer(credsData.account.deviceSignature) ? credsData.account.deviceSignature : Buffer.from(credsData.account.deviceSignature)) : null
                                 break
                             case 'signal_identities':
                                 value = credsData.signalIdentities ? JSON.stringify(credsData.signalIdentities) : null
