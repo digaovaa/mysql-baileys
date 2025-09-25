@@ -725,160 +725,11 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                 return
             }
 
-            // Migrar credenciais PRIMEIRO para garantir que o device existe
+            // Migrar credenciais
             const credsData = await readLegacyData('creds')
             if (credsData) {
-                // Verificar se já existe um device na tabela otimizada
-                const existingDevice = await query('SELECT * FROM devices WHERE session = ? LIMIT 1', [config.session])
-                
-                if (existingDevice[0]) {
-                    console.log('🔄 Atualizando dados existentes com informações legadas...')
-                    
-                    // Atualizar apenas os campos que existem nos dados legados
-                    const updateFields: string[] = []
-                    const updateValues: any[] = []
-                    
-                    // Campos que podem ser migrados dos dados legados
-                    const migratableFields = [
-                        'noise_key_public', 'noise_key_private',
-                        'pairing_ephemeral_key_pair_public', 'pairing_ephemeral_key_pair_private',
-                        'signed_identity_key_public', 'signed_identity_key_private',
-                        'signed_pre_key_public', 'signed_pre_key_private', 'signed_pre_key_signature',
-                        'signed_pre_key_id', 'registration_id', 'adv_secret_key',
-                        'processed_history_messages', 'next_pre_key_id', 'first_unuploaded_pre_key_id',
-                        'account_sync_counter', 'account_settings', 'pairing_code', 'last_prop_hash',
-                        'routing_info', 'jid', 'lid', 'name', 'account_details',
-                        'account_signature_key', 'account_signature', 'account_device_signature',
-                        'signal_identities', 'platform', 'registered', 'registration_options',
-                        'last_account_sync_timestamp', 'my_app_state_key_id'
-                    ]
-                    
-                    for (const field of migratableFields) {
-                        let value: any = null
-                        
-                        // Mapear campos dos dados legados
-                        switch (field) {
-                            case 'noise_key_public':
-                                value = credsData.noiseKey?.public ? (Buffer.isBuffer(credsData.noiseKey.public) ? credsData.noiseKey.public : Buffer.from(credsData.noiseKey.public)) : null
-                                break
-                            case 'noise_key_private':
-                                value = credsData.noiseKey?.private ? (Buffer.isBuffer(credsData.noiseKey.private) ? credsData.noiseKey.private : Buffer.from(credsData.noiseKey.private)) : null
-                                break
-                            case 'pairing_ephemeral_key_pair_public':
-                                value = credsData.pairingEphemeralKeyPair?.public ? (Buffer.isBuffer(credsData.pairingEphemeralKeyPair.public) ? credsData.pairingEphemeralKeyPair.public : Buffer.from(credsData.pairingEphemeralKeyPair.public)) : null
-                                break
-                            case 'pairing_ephemeral_key_pair_private':
-                                value = credsData.pairingEphemeralKeyPair?.private ? (Buffer.isBuffer(credsData.pairingEphemeralKeyPair.private) ? credsData.pairingEphemeralKeyPair.private : Buffer.from(credsData.pairingEphemeralKeyPair.private)) : null
-                                break
-                            case 'signed_identity_key_public':
-                                value = credsData.signedIdentityKey?.public ? (Buffer.isBuffer(credsData.signedIdentityKey.public) ? credsData.signedIdentityKey.public : Buffer.from(credsData.signedIdentityKey.public)) : null
-                                break
-                            case 'signed_identity_key_private':
-                                value = credsData.signedIdentityKey?.private ? (Buffer.isBuffer(credsData.signedIdentityKey.private) ? credsData.signedIdentityKey.private : Buffer.from(credsData.signedIdentityKey.private)) : null
-                                break
-                            case 'signed_pre_key_public':
-                                value = credsData.signedPreKey?.keyPair?.public ? (Buffer.isBuffer(credsData.signedPreKey.keyPair.public) ? credsData.signedPreKey.keyPair.public : Buffer.from(credsData.signedPreKey.keyPair.public)) : null
-                                break
-                            case 'signed_pre_key_private':
-                                value = credsData.signedPreKey?.keyPair?.private ? (Buffer.isBuffer(credsData.signedPreKey.keyPair.private) ? credsData.signedPreKey.keyPair.private : Buffer.from(credsData.signedPreKey.keyPair.private)) : null
-                                break
-                            case 'signed_pre_key_signature':
-                                value = credsData.signedPreKey?.signature ? (Buffer.isBuffer(credsData.signedPreKey.signature) ? credsData.signedPreKey.signature : Buffer.from(credsData.signedPreKey.signature)) : null
-                                break
-                            case 'signed_pre_key_id':
-                                value = credsData.signedPreKey?.keyId || null
-                                break
-                            case 'registration_id':
-                                value = credsData.registrationId || null
-                                break
-                            case 'adv_secret_key':
-                                value = credsData.advSecretKey || null
-                                break
-                            case 'processed_history_messages':
-                                value = credsData.processedHistoryMessages ? JSON.stringify(credsData.processedHistoryMessages) : null
-                                break
-                            case 'next_pre_key_id':
-                                value = credsData.nextPreKeyId || null
-                                break
-                            case 'first_unuploaded_pre_key_id':
-                                value = credsData.firstUnuploadedPreKeyId || null
-                                break
-                            case 'account_sync_counter':
-                                value = credsData.accountSyncCounter || null
-                                break
-                            case 'account_settings':
-                                value = credsData.accountSettings ? JSON.stringify(credsData.accountSettings) : null
-                                break
-                            case 'pairing_code':
-                                value = credsData.pairingCode || null
-                                break
-                            case 'last_prop_hash':
-                                value = credsData.lastPropHash || null
-                                break
-                            case 'routing_info':
-                                value = credsData.routingInfo ? (Buffer.isBuffer(credsData.routingInfo) ? credsData.routingInfo : Buffer.from(credsData.routingInfo)) : null
-                                break
-                            case 'jid':
-                                value = credsData.me?.id || null
-                                break
-                            case 'lid':
-                                value = credsData.me?.lid || null
-                                break
-                            case 'name':
-                                value = credsData.me?.name || null
-                                break
-                            case 'account_details':
-                                value = credsData.account?.details ? (Buffer.isBuffer(credsData.account.details) ? credsData.account.details : Buffer.from(credsData.account.details)) : null
-                                break
-                            case 'account_signature_key':
-                                value = credsData.account?.accountSignatureKey ? (Buffer.isBuffer(credsData.account.accountSignatureKey) ? credsData.account.accountSignatureKey : Buffer.from(credsData.account.accountSignatureKey)) : null
-                                break
-                            case 'account_signature':
-                                value = credsData.account?.accountSignature ? (Buffer.isBuffer(credsData.account.accountSignature) ? credsData.account.accountSignature : Buffer.from(credsData.account.accountSignature)) : null
-                                break
-                            case 'account_device_signature':
-                                value = credsData.account?.deviceSignature ? (Buffer.isBuffer(credsData.account.deviceSignature) ? credsData.account.deviceSignature : Buffer.from(credsData.account.deviceSignature)) : null
-                                break
-                            case 'signal_identities':
-                                value = credsData.signalIdentities ? JSON.stringify(credsData.signalIdentities) : null
-                                break
-                            case 'platform':
-                                value = credsData.platform || null
-                                break
-                            case 'registered':
-                                value = credsData.registered || false
-                                break
-                            case 'registration_options':
-                                value = credsData.registration ? JSON.stringify(credsData.registration) : null
-                                break
-                            case 'last_account_sync_timestamp':
-                                value = credsData.lastAccountSyncTimestamp || null
-                                break
-                            case 'my_app_state_key_id':
-                                value = credsData.myAppStateKeyId || null
-                                break
-                        }
-                        
-                        if (value !== null) {
-                            updateFields.push(`${field} = ?`)
-                            updateValues.push(value)
-                        }
-                    }
-                    
-                    if (updateFields.length > 0) {
-                        updateValues.push(config.session)
-                        await query(`
-                            UPDATE devices 
-                            SET ${updateFields.join(', ')} 
-                            WHERE session = ?
-                        `, updateValues)
-                        console.log(`✅ ${updateFields.length} campos atualizados com dados legados`)
-                    }
-                } else {
-                    // Se não existe device, criar um novo
-                    await saveDeviceData(credsData)
-                    console.log('✅ Credenciais migradas')
-                }
+                await saveDeviceData(credsData)
+                console.log('✅ Credenciais migradas')
             }
 
             // Migrar dados de chaves (em lotes para performance)
@@ -1025,15 +876,15 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             const deviceData = {
                 whatsapp_id: creds.registrationId?.toString() || config.session,
                 session: config.session,
-                noise_key_public: creds.noiseKey?.public ? Buffer.from(creds.noiseKey.public) : null,
-                noise_key_private: creds.noiseKey?.private ? Buffer.from(creds.noiseKey.private) : null,
-                pairing_ephemeral_key_pair_public: creds.pairingEphemeralKeyPair?.public ? Buffer.from(creds.pairingEphemeralKeyPair.public) : null,
-                pairing_ephemeral_key_pair_private: creds.pairingEphemeralKeyPair?.private ? Buffer.from(creds.pairingEphemeralKeyPair.private) : null,
-                signed_identity_key_public: creds.signedIdentityKey?.public ? Buffer.from(creds.signedIdentityKey.public) : null,
-                signed_identity_key_private: creds.signedIdentityKey?.private ? Buffer.from(creds.signedIdentityKey.private) : null,
-                signed_pre_key_public: creds.signedPreKey?.keyPair?.public ? Buffer.from(creds.signedPreKey.keyPair.public) : null,
-                signed_pre_key_private: creds.signedPreKey?.keyPair?.private ? Buffer.from(creds.signedPreKey.keyPair.private) : null,
-                signed_pre_key_signature: creds.signedPreKey?.signature ? Buffer.from(creds.signedPreKey.signature) : null,
+                noise_key_public: creds.noiseKey?.public ? (Buffer.isBuffer(creds.noiseKey.public) ? creds.noiseKey.public : Buffer.from(creds.noiseKey.public)) : null,
+                noise_key_private: creds.noiseKey?.private ? (Buffer.isBuffer(creds.noiseKey.private) ? creds.noiseKey.private : Buffer.from(creds.noiseKey.private)) : null,
+                pairing_ephemeral_key_pair_public: creds.pairingEphemeralKeyPair?.public ? (Buffer.isBuffer(creds.pairingEphemeralKeyPair.public) ? creds.pairingEphemeralKeyPair.public : Buffer.from(creds.pairingEphemeralKeyPair.public)) : null,
+                pairing_ephemeral_key_pair_private: creds.pairingEphemeralKeyPair?.private ? (Buffer.isBuffer(creds.pairingEphemeralKeyPair.private) ? creds.pairingEphemeralKeyPair.private : Buffer.from(creds.pairingEphemeralKeyPair.private)) : null,
+                signed_identity_key_public: creds.signedIdentityKey?.public ? (Buffer.isBuffer(creds.signedIdentityKey.public) ? creds.signedIdentityKey.public : Buffer.from(creds.signedIdentityKey.public)) : null,
+                signed_identity_key_private: creds.signedIdentityKey?.private ? (Buffer.isBuffer(creds.signedIdentityKey.private) ? creds.signedIdentityKey.private : Buffer.from(creds.signedIdentityKey.private)) : null,
+                signed_pre_key_public: creds.signedPreKey?.keyPair?.public ? (Buffer.isBuffer(creds.signedPreKey.keyPair.public) ? creds.signedPreKey.keyPair.public : Buffer.from(creds.signedPreKey.keyPair.public)) : null,
+                signed_pre_key_private: creds.signedPreKey?.keyPair?.private ? (Buffer.isBuffer(creds.signedPreKey.keyPair.private) ? creds.signedPreKey.keyPair.private : Buffer.from(creds.signedPreKey.keyPair.private)) : null,
+                signed_pre_key_signature: creds.signedPreKey?.signature ? (Buffer.isBuffer(creds.signedPreKey.signature) ? creds.signedPreKey.signature : Buffer.from(creds.signedPreKey.signature)) : null,
                 signed_pre_key_id: creds.signedPreKey?.keyId || null,
                 registration_id: creds.registrationId || null,
                 adv_secret_key: creds.advSecretKey || null,
@@ -1044,21 +895,21 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                 account_settings: creds.accountSettings ? JSON.stringify(creds.accountSettings) : null,
                 pairing_code: creds.pairingCode || null,
                 last_prop_hash: creds.lastPropHash || null,
-                routing_info: creds.routingInfo ? Buffer.from(creds.routingInfo) : null,
+                routing_info: creds.routingInfo ? (Buffer.isBuffer(creds.routingInfo) ? creds.routingInfo : Buffer.from(creds.routingInfo)) : null,
                 jid: creds.me?.id || null,
                 lid: creds.me?.lid || null,
                 name: creds.me?.name || null,
-                account_details: creds.account?.details ? Buffer.from(creds.account.details) : null,
-                account_signature_key: creds.account?.accountSignatureKey ? Buffer.from(creds.account.accountSignatureKey) : null,
-                account_signature: creds.account?.accountSignature ? Buffer.from(creds.account.accountSignature) : null,
-                account_device_signature: creds.account?.deviceSignature ? Buffer.from(creds.account.deviceSignature) : null,
+                account_details: creds.account?.details ? (Buffer.isBuffer(creds.account.details) ? creds.account.details : Buffer.from(creds.account.details)) : null,
+                account_signature_key: creds.account?.accountSignatureKey ? (Buffer.isBuffer(creds.account.accountSignatureKey) ? creds.account.accountSignatureKey : Buffer.from(creds.account.accountSignatureKey)) : null,
+                account_signature: creds.account?.accountSignature ? (Buffer.isBuffer(creds.account.accountSignature) ? creds.account.accountSignature : Buffer.from(creds.account.accountSignature)) : null,
+                account_device_signature: creds.account?.deviceSignature ? (Buffer.isBuffer(creds.account.deviceSignature) ? creds.account.deviceSignature : Buffer.from(creds.account.deviceSignature)) : null,
                 signal_identities: creds.signalIdentities ? JSON.stringify(creds.signalIdentities) : null,
                 platform: creds.platform || null,
                 device_id: creds.deviceId || null,
                 phone_id: creds.phoneId || null,
-                identity_id: creds.identityId ? Buffer.from(creds.identityId) : null,
+                identity_id: creds.identityId ? (Buffer.isBuffer(creds.identityId) ? creds.identityId : Buffer.from(creds.identityId)) : null,
                 registered: creds.registered || false,
-                backup_token: creds.backupToken ? Buffer.from(creds.backupToken) : null,
+                backup_token: creds.backupToken ? (Buffer.isBuffer(creds.backupToken) ? creds.backupToken : Buffer.from(creds.backupToken)) : null,
                 registration_options: creds.registration ? JSON.stringify(creds.registration) : null,
                 last_account_sync_timestamp: creds.lastAccountSyncTimestamp || null,
                 my_app_state_key_id: creds.myAppStateKeyId || null
