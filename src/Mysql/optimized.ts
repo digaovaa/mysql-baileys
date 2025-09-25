@@ -885,11 +885,29 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             // Função auxiliar para converter Buffer com tratamento de erro
             const safeBufferFrom = (data: any, fieldName: string) => {
                 try {
-                    if (!data) return null
-                    if (Buffer.isBuffer(data)) return data
-                    if (typeof data === 'string') return Buffer.from(data, 'base64')
-                    if (data.data && typeof data.data === 'string') return Buffer.from(data.data, 'base64')
-                    console.warn(`⚠️ Formato inesperado para ${fieldName}:`, typeof data, data?.constructor?.name)
+                    if (!data) {
+                        console.log(`🔍 ${fieldName}: dados vazios`)
+                        return null
+                    }
+                    
+                    console.log(`🔍 ${fieldName}: tipo=${typeof data}, isBuffer=${Buffer.isBuffer(data)}, constructor=${data?.constructor?.name}`)
+                    
+                    if (Buffer.isBuffer(data)) {
+                        console.log(`✅ ${fieldName}: já é Buffer, retornando diretamente`)
+                        return data
+                    }
+                    
+                    if (typeof data === 'string') {
+                        console.log(`✅ ${fieldName}: string base64, convertendo`)
+                        return Buffer.from(data, 'base64')
+                    }
+                    
+                    if (data.data && typeof data.data === 'string') {
+                        console.log(`✅ ${fieldName}: objeto com data, convertendo`)
+                        return Buffer.from(data.data, 'base64')
+                    }
+                    
+                    console.warn(`⚠️ Formato inesperado para ${fieldName}:`, typeof data, data?.constructor?.name, data)
                     return null
                 } catch (error) {
                     console.warn(`⚠️ Erro ao converter Buffer para ${fieldName}:`, error.message)
