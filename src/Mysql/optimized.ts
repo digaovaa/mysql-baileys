@@ -903,8 +903,10 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                     }
                     
                     if (data.data && typeof data.data === 'string') {
-                        console.log(`✅ ${fieldName}: objeto com data, convertendo`)
-                        return Buffer.from(data.data, 'base64')
+                        console.log(`✅ ${fieldName}: objeto com data, convertendo de:`, data.data.substring(0, 20) + '...')
+                        const buffer = Buffer.from(data.data, 'base64')
+                        console.log(`✅ ${fieldName}: Buffer criado com tamanho:`, buffer.length)
+                        return buffer
                     }
                     
                     console.warn(`⚠️ Formato inesperado para ${fieldName}:`, typeof data, data?.constructor?.name, data)
@@ -960,6 +962,13 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             const fields = Object.keys(deviceData).join(', ')
             const placeholders = Object.keys(deviceData).map(() => '?').join(', ')
             const updateFields = Object.keys(deviceData).map(field => `${field} = VALUES(${field})`).join(', ')
+
+            console.log('🔍 Debug - Inserindo device com dados:', {
+                noise_key_public_size: deviceData.noise_key_public?.length || 'null',
+                noise_key_private_size: deviceData.noise_key_private?.length || 'null',
+                account_details_size: deviceData.account_details?.length || 'null',
+                account_signature_key_size: deviceData.account_signature_key?.length || 'null'
+            })
 
             await query(`
                 INSERT INTO devices (${fields}) 
