@@ -738,6 +738,9 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
         console.log('🔄 Iniciando migração dos dados legados...')
         
         try {
+            // Definir a tabela legada de origem
+            const tableName = config.tableName || 'auth'
+            
             // Verificar se já existe dados otimizados
             const existingDevice = await query('SELECT id FROM devices WHERE session = ? LIMIT 1', [config.session])
             if (existingDevice[0]) {
@@ -782,7 +785,8 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                     if (legacyKeys.length > 0) {
                         const values = legacyKeys.map(row => {
                             const keyId = row.id.replace(keyType.prefix, '')
-                            return [keyId, row.value, currentDeviceId, config.session]
+                            const value = typeof row.value === 'object' ? JSON.stringify(row.value) : row.value
+                            return [keyId, value, currentDeviceId, config.session]
                         })
 
                         // Inserir em lotes
