@@ -64,7 +64,7 @@ async function connection(config: MySQLConfig, force: boolean = false) {
 
 async function createOptimizedSchema(config: MySQLConfig) {
     const tableName = config.tableName || 'auth'
-    
+
     try {
         // 1. Criar tabela legacy se não existir (compatibilidade)
         await conn.execute(`
@@ -149,7 +149,7 @@ async function createOptimizedSchema(config: MySQLConfig) {
                 INDEX idx_jid (jid)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `)
-      await conn.execute(`
+        await conn.execute(`
         CREATE TABLE IF NOT EXISTS messages (
         id INT PRIMARY KEY AUTO_INCREMENT,
         wid VARCHAR(255) NOT NULL,
@@ -173,7 +173,7 @@ async function createOptimizedSchema(config: MySQLConfig) {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 `)
 
-    await conn.execute(`
+        await conn.execute(`
     CREATE TABLE IF NOT EXISTS chats (
     id VARCHAR(255) NOT NULL,
     device_id INT NOT NULL,
@@ -195,7 +195,7 @@ async function createOptimizedSchema(config: MySQLConfig) {
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`)
 
-    await conn.execute(`
+        await conn.execute(`
     CREATE TABLE IF NOT EXISTS contacts (
     id VARCHAR(255) NOT NULL,
     device_id INT NOT NULL,
@@ -218,7 +218,7 @@ async function createOptimizedSchema(config: MySQLConfig) {
         // Criar tabelas de dados sob demanda
         const keyTables = [
             'sender_keys',
-            'sessions', 
+            'sessions',
             'sender_key_memory',
             'pre_keys',
             'app_state_sync_versions',
@@ -254,7 +254,7 @@ async function createOptimizedSchema(config: MySQLConfig) {
 async function updateExistingSchema(keyTables: string[]) {
     try {
         console.log('🔧 Verificando e atualizando schema existente...')
-        
+
         for (const table of keyTables) {
             try {
                 // Verificar se a tabela existe e tem coluna TEXT
@@ -268,13 +268,13 @@ async function updateExistingSchema(keyTables: string[]) {
 
                 if (columns[0] && columns[0].DATA_TYPE === 'text') {
                     console.log(`📝 Atualizando ${table}.value de TEXT para LONGTEXT...`)
-                    
+
                     // Atualizar a coluna para LONGTEXT
                     await conn.execute(`
                         ALTER TABLE ${table} 
                         MODIFY COLUMN value LONGTEXT NOT NULL
                     `)
-                    
+
                     console.log(`✅ ${table} atualizado com sucesso`)
                 }
             } catch (error) {
@@ -286,7 +286,7 @@ async function updateExistingSchema(keyTables: string[]) {
     }
 }
 
-export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
+export const useMySQLAuthStateOptimized = async (config: MySQLConfig): Promise<{
     state: AuthenticationState,
     saveCreds: () => Promise<void>,
     clear: () => Promise<void>,
@@ -315,7 +315,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             try {
                 const [rows] = await sqlConn.query(sql, values)
                 return rows as sqlData
-            } catch(e) {
+            } catch (e) {
                 console.warn(`Query failed (attempt ${x + 1}):`, e.message)
                 await new Promise(r => setTimeout(r, retryRequestDelayMs))
             }
@@ -363,7 +363,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                 'SELECT id FROM devices WHERE session = ? AND status = 1 LIMIT 1',
                 [config.session]
             ) as any[]
-            
+
             if (result[0]?.id) {
                 deviceId = result[0].id
                 return deviceId as number
@@ -410,7 +410,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             if (result[0]) {
                 deviceId = result[0].id
                 const device = result[0]
-                
+
                 // Converter dados do banco para formato AuthenticationCreds
                 // CRITICAL: Use Buffer.from() para garantir compatibilidade com libsignal
                 const creds = {
@@ -540,7 +540,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                         value = fromObject(value)
                     }
                     results[row.key_id] = value as SignalDataTypeMap[T]
-                    
+
                     // Cache o resultado
                     const cacheKey = getCacheKey(type, row.key_id)
                     setCache(cacheKey, value)
@@ -548,7 +548,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             }
         } catch (error) {
             console.warn(`Erro ao ler ${type} otimizado, usando fallback:`, error.message)
-            
+
             // Fallback para tabela legacy
             for (const id of uncachedIds) {
                 const legacyData = await readLegacyData(`${type}-${id}`)
@@ -558,7 +558,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                         value = fromObject(value)
                     }
                     results[id] = value as SignalDataTypeMap[T]
-                    
+
                     const cacheKey = getCacheKey(type, id)
                     setCache(cacheKey, value)
                 }
@@ -570,7 +570,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
 
     const writeKeyData = async (data: SignalDataSet) => {
         const currentDeviceId = await getDeviceId()
-        
+
         for (const category in data) {
             const categoryData = data[category as keyof SignalDataTypeMap]
             if (!categoryData) continue
@@ -585,14 +585,14 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             }
 
             const tableName = tableMap[category as keyof typeof tableMap]
-            
+
             for (const id in categoryData) {
                 const value = categoryData[id]
                 const cacheKey = getCacheKey(category, id)
-                
+
                 if (value) {
                     const valueStr = JSON.stringify(value, BufferJSON.replacer)
-                    
+
                     try {
                         if (tableName) {
                             await query(`
@@ -601,12 +601,12 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                                 ON DUPLICATE KEY UPDATE value = VALUES(value)
                             `, [id, valueStr, currentDeviceId, config.session])
                         }
-                        
+
                         // Atualizar cache
                         setCache(cacheKey, value)
                     } catch (error) {
                         console.warn(`Erro ao escrever ${category} otimizado, usando fallback:`, error.message)
-                        
+
                         // Fallback para tabela legacy
                         await writeLegacyData(`${category}-${id}`, value)
                     }
@@ -619,7 +619,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
                                 WHERE key_id = ? AND device_id = ?
                             `, [id, currentDeviceId])
                         }
-                        
+
                         // Remover do cache
                         keyCache.delete(cacheKey)
                     } catch (error) {
@@ -633,7 +633,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
 
     const writeLegacyData = async (id: string, value: object) => {
         const valueFixed = JSON.stringify(value, BufferJSON.replacer)
-        await query(`INSERT INTO ${tableName} (session, id, value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = ?`, 
+        await query(`INSERT INTO ${tableName} (session, id, value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = ?`,
             [config.session, id, valueFixed, valueFixed])
     }
 
@@ -643,11 +643,11 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
 
     const clearAll = async () => {
         const currentDeviceId = await getDeviceId()
-        
+
         try {
             // Limpar tabelas otimizadas
             const keyTables = ['sender_keys', 'sessions', 'sender_key_memory', 'pre_keys', 'app_state_sync_versions', 'app_state_sync_keys']
-            
+
             for (const table of keyTables) {
                 await query(`DELETE FROM ${table} WHERE device_id = ?`, [currentDeviceId])
             }
@@ -656,18 +656,18 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             // Fallback
             await query(`DELETE FROM ${tableName} WHERE id != 'creds' AND session = ?`, [config.session])
         }
-        
+
         clearCache()
     }
 
     const removeAll = async () => {
         try {
             const currentDeviceId = await getDeviceId()
-            
+
             // Limpar TODAS as tabelas relacionadas ao device ID de forma explícita
             const keyTables = [
                 'sender_keys',
-                'sessions', 
+                'sessions',
                 'sender_key_memory',
                 'pre_keys',
                 'app_state_sync_versions',
@@ -678,7 +678,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
             for (const table of keyTables) {
                 try {
                     const result = await query(`DELETE FROM ${table} WHERE device_id = ?`, [currentDeviceId])
-                   
+
                 } catch (error) {
                     console.warn(`Erro ao limpar tabela ${table}:`, error.message)
                 }
@@ -686,43 +686,51 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
 
             // Remover device (isso também remove via CASCADE, mas já limpamos explicitamente acima)
             const deviceResult = await query(`DELETE FROM devices WHERE session = ?`, [config.session])
-           
-        } catch (error) {
-            console.warn('Erro ao remover dados otimizados, usando fallback:', error.message)
-            
+
             // Fallback mais robusto - limpar TUDO da tabela legacy
             try {
                 const result = await query(`DELETE FROM ${tableName} WHERE session = ?`, [config.session])
-          
+
+            } catch (fallbackError) {
+                console.error('Erro ao limpar tabela legacy:', fallbackError.message)
+                throw fallbackError
+            }
+        } catch (error) {
+            console.warn('Erro ao remover dados otimizados, usando fallback:', error.message)
+
+            // Fallback mais robusto - limpar TUDO da tabela legacy
+            try {
+                const result = await query(`DELETE FROM ${tableName} WHERE session = ?`, [config.session])
+
             } catch (fallbackError) {
                 console.error('Erro ao limpar tabela legacy:', fallbackError.message)
                 throw fallbackError
             }
         }
-        
+
         // Limpar TODOS os caches relacionados
         clearCache()
         deviceCache.delete(`device-${config.session}`)
-        
+
         // Reset do device ID
         deviceId = null
-        
-        
+
+
     }
 
     const clearSenderKeyMemory = async (): Promise<sqlData> => {
         const currentDeviceId = await getDeviceId()
-        
+
         try {
             const result = await query(`DELETE FROM sender_key_memory WHERE device_id = ?`, [currentDeviceId])
-            
+
             // Limpar cache relacionado
             for (const [key] of keyCache) {
                 if (key.includes('sender-key-memory')) {
                     keyCache.delete(key)
                 }
             }
-            
+
             console.log(`Deleted ${result.affectedRows || 0} rows from sender-key-memory`)
             return result
         } catch (error) {
@@ -736,11 +744,11 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
 
     const migrateFromLegacy = async () => {
         console.log('🔄 Iniciando migração dos dados legados...')
-        
+
         try {
             // Definir a tabela legada de origem
             const tableName = config.tableName || 'auth'
-            
+
             // Verificar se já existe dados otimizados
             const existingDevice = await query('SELECT id FROM devices WHERE session = ? LIMIT 1', [config.session])
             if (existingDevice[0]) {
@@ -897,7 +905,7 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
     const diagnoseSchema = async () => {
         try {
             console.log('🔍 Diagnóstico do schema...')
-            
+
             const keyTables = ['sender_keys', 'sessions', 'sender_key_memory', 'pre_keys', 'app_state_sync_versions', 'app_state_sync_keys']
             const issues: string[] = []
 
@@ -944,12 +952,12 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
     // ========================================
 
     const startTime = Date.now()
-    
+
     // Carregamento otimizado: APENAS dados essenciais do device
     const creds: AuthenticationCreds = await readDeviceData() || initAuthCreds()
-    
+
     performanceStats.bootTime = Date.now() - startTime
-    
+
     console.log(`⚡ Boot otimizado em ${performanceStats.bootTime}ms`)
 
     return {
