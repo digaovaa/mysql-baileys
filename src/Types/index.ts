@@ -117,8 +117,8 @@ export type SignalDataSet = {
 }
 
 export type KeyPair = {
-	public: Uint8Array
-	private: Uint8Array
+	public: Uint8Array | Buffer
+	private: Uint8Array | Buffer
 }
 
 export type sqlData = {
