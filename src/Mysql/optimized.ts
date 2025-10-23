@@ -328,10 +328,11 @@ export const useMySQLAuthStateOptimized = async(config: MySQLConfig): Promise<{
     // ========================================
 
     const getCacheKey = (type: string, id: string) => `${type}-${id}-${config.session}`
+    const cacheTll = config.cacheTll || CACHE_TTL
 
     const getFromCache = (key: string): any => {
         const entry = keyCache.get(key) as CacheEntry
-        if (entry && (Date.now() - entry.timestamp) < CACHE_TTL) {
+        if (entry && (Date.now() - entry.timestamp) <  cacheTll) {
             performanceStats.cacheHits++
             return entry.data
         }
