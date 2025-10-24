@@ -170,6 +170,8 @@ export type MySQLConfig = {
 	isServer?: boolean,
 	/* Use the config SSL. (Default: disabled) */
 	ssl?: string | SslOptions
+
+	cacheTll?: number
 }
 
 export type valueReplacer = {

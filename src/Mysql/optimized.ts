@@ -26,6 +26,7 @@ const CACHE_TTL = 5 * 60 * 1000 // 5 minutos
 interface CacheEntry {
     data: any
     timestamp: number
+    expiresAt: number
 }
 
 async function connection(config: MySQLConfig, force: boolean = false) {
@@ -328,28 +329,58 @@ export const useMySQLAuthStateOptimized = async (config: MySQLConfig): Promise<{
     // ========================================
 
     const getCacheKey = (type: string, id: string) => `${type}-${id}-${config.session}`
+   
 
     const getFromCache = (key: string): any => {
+        if(config.cacheTll)
+        {
         const entry = keyCache.get(key) as CacheEntry
-        if (entry && (Date.now() - entry.timestamp) < CACHE_TTL) {
+        if (entry) {
             performanceStats.cacheHits++
+              if (Date.now() > entry.expiresAt) {
+                keyCache.delete(key);
+                return null;  
+            }
             return entry.data
         }
+       }
         performanceStats.cacheMisses++
         return null
     }
 
     const setCache = (key: string, data: any) => {
+        if(config.cacheTll)
+        {
+         const entry = keyCache.get(key) as CacheEntry
+         if(entry)
+            {
+                return;
+            }    
         keyCache.set(key, {
             data,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            expiresAt: Date.now() + config.cacheTll,
         })
+      }
     }
 
     const clearCache = () => {
         keyCache.clear()
         deviceCache.clear()
     }
+    if(config.cacheTll)
+    {
+    setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of keyCache.entries()) {
+        if (now > entry.expiresAt) {
+        keyCache.delete(key);
+        }
+    }
+  },2 * 60 * 1000); // varre a cada 2 minuto
+}
+
+
 
     // ========================================
     // FUNÇÕES OTIMIZADAS DE DADOS
