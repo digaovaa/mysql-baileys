@@ -1,6 +1,7 @@
 import { createConnection } from 'mysql2/promise'
 import { BufferJSON, initAuthCreds, fromObject } from '../Utils'
 import { MySQLConfig, sqlData, sqlConnection, AuthenticationCreds, AuthenticationState, SignalDataTypeMap, SignalDataSet } from '../Types'
+import { LRUCache } from 'lru-cache'
 
 /**
  * MYSQL-BAILEYS OTIMIZADO COM SCHEMA NORMALIZADO
@@ -19,15 +20,33 @@ import { MySQLConfig, sqlData, sqlConnection, AuthenticationCreds, Authenticatio
 let conn: sqlConnection
 
 // Cache em memória para dados frequentemente acessados
-const deviceCache = new Map<string, any>()
-const keyCache = new Map<string, any>()
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutos
 
-interface CacheEntry {
-    data: any
-    timestamp: number
-    expiresAt: number
-}
+// LRU Cache com TTL automático (COMPARTILHADO entre todas as sessões)
+// Nota: Quando usamos .set(key, value, { ttl: X }), o TTL é SEMPRE resetado,
+// mesmo para keys existentes, garantindo que o cache seja atualizado corretamente
+//
+// Cálculo de capacidade:
+// - Por sessão: ~300-1000 keys (sessions, sender-keys, pre-keys, etc)
+// - Dispositivos: geralmente 1 por sessão
+// - Para múltiplas sessões simultâneas, ajuste maxCacheSize no config
+
+// Cache de dispositivos (baixo volume)
+const deviceCache = new LRUCache<string, any>({
+    max: 1000, // 1000 devices (suficiente para muitas sessões)
+    ttl: CACHE_TTL, // TTL padrão de 5 minutos
+    updateAgeOnGet: true, // atualiza o TTL ao acessar
+    updateAgeOnHas: false
+})
+
+// Cache de chaves (alto volume - compartilhado entre sessões)
+// Padrão: 50.000 keys (suporta ~50-100 sessões simultâneas confortavelmente)
+const keyCache = new LRUCache<string, any>({
+    max: 50000, // máximo de 50.000 keys em cache (configurável via maxCacheSize)
+    ttl: CACHE_TTL, // TTL padrão de 5 minutos
+    updateAgeOnGet: true, // atualiza o TTL ao acessar
+    updateAgeOnHas: false
+})
 
 async function connection(config: MySQLConfig, force: boolean = false) {
     const ended = !!conn?.connection?._closing
@@ -329,56 +348,31 @@ export const useMySQLAuthStateOptimized = async (config: MySQLConfig): Promise<{
     // ========================================
 
     const getCacheKey = (type: string, id: string) => `${type}-${id}-${config.session}`
-   
 
     const getFromCache = (key: string): any => {
-        if(config.cacheTll)
-        {
-        const entry = keyCache.get(key) as CacheEntry
-        if (entry) {
-            performanceStats.cacheHits++
-              if (Date.now() > entry.expiresAt) {
-                keyCache.delete(key);
-                return null;  
+        if (config.cacheTll) {
+            const value = keyCache.get(key)
+            if (value !== undefined) {
+                performanceStats.cacheHits++
+                return value
             }
-            return entry.data
         }
-       }
         performanceStats.cacheMisses++
         return null
     }
 
     const setCache = (key: string, data: any) => {
-        if(config.cacheTll)
-        {
-         const entry = keyCache.get(key) as CacheEntry
-         if(entry)
-            {
-                keyCache.delete(key);
-            }    
-        keyCache.set(key, {
-            data,
-            timestamp: Date.now(),
-            expiresAt: Date.now() + config.cacheTll,
-        })
-      }
+        if (config.cacheTll) {
+            // Ao passar { ttl } explicitamente, o lru-cache SEMPRE reseta o TTL,
+            // mesmo se a key já existir, garantindo atualização correta do cache
+            keyCache.set(key, data, { ttl: config.cacheTll })
+        }
     }
 
     const clearCache = () => {
         keyCache.clear()
         deviceCache.clear()
     }
-    if(config.cacheTll)
-    {
-    setInterval(() => {
-    const now = Date.now();
-    for (const [key, entry] of keyCache.entries()) {
-        if (now > entry.expiresAt) {
-        keyCache.delete(key);
-        }
-    }
-  },2 * 60 * 1000); // varre a cada 2 minuto
-}
 
 
 
@@ -410,11 +404,14 @@ export const useMySQLAuthStateOptimized = async (config: MySQLConfig): Promise<{
 
     const readDeviceData = async (): Promise<AuthenticationCreds | null> => {
         const cacheKey = `device-${config.session}`
-        const cached = deviceCache.get(cacheKey)
-        if (cached) {
-            performanceStats.cacheHits++
-            return cached
+        if (config.cacheTll) {
+            const cached = deviceCache.get(cacheKey)
+            if (cached !== undefined) {
+                performanceStats.cacheHits++
+                return cached
+            }
         }
+        performanceStats.cacheMisses++
 
         try {
             // Primeiro tenta ler das tabelas otimizadas
@@ -498,7 +495,10 @@ export const useMySQLAuthStateOptimized = async (config: MySQLConfig): Promise<{
                     myAppStateKeyId: device.my_app_state_key_id
                 }
 
-                deviceCache.set(cacheKey, creds)
+                // Armazena no cache se habilitado
+                if (config.cacheTll) {
+                    deviceCache.set(cacheKey, creds, { ttl: config.cacheTll })
+                }
                 return creds as AuthenticationCreds
             }
         } catch (error) {
@@ -756,7 +756,7 @@ export const useMySQLAuthStateOptimized = async (config: MySQLConfig): Promise<{
             const result = await query(`DELETE FROM sender_key_memory WHERE device_id = ?`, [currentDeviceId])
 
             // Limpar cache relacionado
-            for (const [key] of keyCache) {
+            for (const key of keyCache.keys()) {
                 if (key.includes('sender-key-memory')) {
                     keyCache.delete(key)
                 }
@@ -925,8 +925,28 @@ export const useMySQLAuthStateOptimized = async (config: MySQLConfig): Promise<{
     }
 
     const getPerformanceStats = async () => {
+        const keyCacheMax = 50000 // mesmo valor definido na criação do cache
+        const deviceCacheMax = 1000
+        const keyCacheUsage = (keyCache.size / keyCacheMax * 100).toFixed(2)
+        const deviceCacheUsage = (deviceCache.size / deviceCacheMax * 100).toFixed(2)
+        
         return {
             ...performanceStats,
+            cache: {
+                keys: {
+                    size: keyCache.size,
+                    max: keyCacheMax,
+                    usage: `${keyCacheUsage}%`,
+                    warning: keyCache.size > keyCacheMax * 0.8 ? '⚠️ Cache acima de 80% - considere aumentar max no código' : null
+                },
+                devices: {
+                    size: deviceCache.size,
+                    max: deviceCacheMax,
+                    usage: `${deviceCacheUsage}%`,
+                    warning: deviceCache.size > deviceCacheMax * 0.8 ? '⚠️ Cache acima de 80%' : null
+                }
+            },
+            // Legacy (manter compatibilidade)
             cacheSize: keyCache.size,
             deviceCacheSize: deviceCache.size,
             memoryUsage: process.memoryUsage()

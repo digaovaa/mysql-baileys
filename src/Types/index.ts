@@ -171,7 +171,11 @@ export type MySQLConfig = {
 	/* Use the config SSL. (Default: disabled) */
 	ssl?: string | SslOptions
 
+	/* Cache TTL in milliseconds. If not set, cache is disabled. (Example: 300000 = 5 minutes) */
 	cacheTll?: number
+	
+	/* Maximum number of keys to cache. Useful for multiple simultaneous sessions. (Default: 50000 = ~50-100 sessions) */
+	maxCacheSize?: number
 }
 
 export type valueReplacer = {
