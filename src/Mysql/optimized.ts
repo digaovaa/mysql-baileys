@@ -354,7 +354,7 @@ export const useMySQLAuthStateOptimized = async (config: MySQLConfig): Promise<{
          const entry = keyCache.get(key) as CacheEntry
          if(entry)
             {
-                return;
+                keyCache.delete(key);
             }    
         keyCache.set(key, {
             data,
