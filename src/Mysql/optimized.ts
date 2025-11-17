@@ -1,6 +1,6 @@
-import { createConnection } from 'mysql2/promise'
+import { createPool, Pool } from 'mysql2/promise'
 import { BufferJSON, initAuthCreds, fromObject } from '../Utils'
-import { MySQLConfig, sqlData, sqlConnection, AuthenticationCreds, AuthenticationState, SignalDataTypeMap, SignalDataSet } from '../Types'
+import { MySQLConfig, sqlData, sqlConnection, sqlPool, AuthenticationCreds, AuthenticationState, SignalDataTypeMap, SignalDataSet } from '../Types'
 import { LRUCache } from 'lru-cache'
 
 /**
@@ -17,7 +17,54 @@ import { LRUCache } from 'lru-cache'
  * - Uso eficiente do InnoDB buffer pool
  */
 
-let conn: sqlConnection
+// Map de pools de conexões - um pool por configuração única (host + port + database + user)
+// Permite múltiplos hosts/bancos simultâneos sem interferência
+const pools = new Map<string, sqlPool>()
+
+/**
+ * Gera uma chave única para identificar uma configuração de conexão
+ * Usa host + port + database + user para diferenciar pools
+ * Cada configuração única terá seu próprio pool isolado
+ */
+function getPoolKey(config: MySQLConfig): string {
+    const host = config.host || 'localhost'
+    const port = config.port || 3306
+    const database = config.database || 'base'
+    const user = config.user || 'root'
+    const socketPath = config.socketPath || ''
+    
+    // Se usar socketPath, ele tem prioridade sobre host/port
+    if (socketPath) {
+        return `socket:${socketPath}:${database}:${user}`
+    }
+    
+    return `${host}:${port}:${database}:${user}`
+}
+
+/**
+ * Fecha todos os pools de conexões ativos
+ * Útil para shutdown graceful da aplicação
+ */
+export async function closeAllPools(): Promise<void> {
+    const poolKeys = Array.from(pools.keys())
+    console.log(`🔄 Fechando ${poolKeys.length} pool(s) de conexões...`)
+    
+    const closePromises = poolKeys.map(async (key) => {
+        const poolInstance = pools.get(key)
+        if (poolInstance) {
+            try {
+                await poolInstance.end()
+                pools.delete(key)
+                console.log(`✅ Pool fechado: ${key}`)
+            } catch (error: any) {
+                console.warn(`⚠️ Erro ao fechar pool ${key}:`, error.message)
+            }
+        }
+    })
+    
+    await Promise.all(closePromises)
+    console.log('✅ Todos os pools foram fechados')
+}
 
 // Cache em memória para dados frequentemente acessados
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutos
@@ -48,12 +95,29 @@ const keyCache = new LRUCache<string, any>({
     updateAgeOnHas: false
 })
 
-async function connection(config: MySQLConfig, force: boolean = false) {
-    const ended = !!conn?.connection?._closing
-    const newConnection = conn === undefined
+/**
+ * Cria ou retorna o pool de conexões para uma configuração específica
+ * Cada configuração única (host + port + database + user) tem seu próprio pool
+ * Permite múltiplos hosts/bancos simultâneos sem interferência
+ */
+async function getPool(config: MySQLConfig, force: boolean = false): Promise<sqlPool> {
+    const poolKey = getPoolKey(config)
+    let pool = pools.get(poolKey)
 
-    if (newConnection || ended || force) {
-        conn = await createConnection({
+    // Se não existe pool ou foi forçado a recriar
+    if (!pool || force) {
+        // Fechar pool existente se houver (apenas se force=true)
+        if (pool && force) {
+            try {
+                await pool.end()
+                pools.delete(poolKey)
+            } catch (error: any) {
+                console.warn(`Erro ao fechar pool existente (${poolKey}):`, error.message)
+            }
+        }
+
+        // Criar novo pool com configurações otimizadas
+        pool = createPool({
             database: config.database || 'base',
             host: config.host || 'localhost',
             port: config.port || 3306,
@@ -70,19 +134,60 @@ async function connection(config: MySQLConfig, force: boolean = false) {
             insecureAuth: config.insecureAuth || false,
             isServer: config.isServer || false,
             timezone: '+00:00', // UTC timezone
-            charset: 'utf8mb4'
+            charset: 'utf8mb4',
+            // Configurações do pool para evitar "Too many connections"
+            connectionLimit: config.connectionLimit || 10, // Limite padrão de 10 conexões
+            queueLimit: config.queueLimit || 0, // Sem limite de fila (0 = ilimitado)
+            // Configurações adicionais de performance
+            waitForConnections: true, // Esperar por conexões disponíveis
+            // Configurações de timeout
+            connectTimeout: 10000, // 10s para conectar
         })
 
-        if (newConnection) {
-            // Criar schema otimizado se não existir
-            await createOptimizedSchema(config)
+        // Armazenar pool no Map
+        pools.set(poolKey, pool)
+
+        // Event listeners para monitoramento
+        pool.on('connection', (connection) => {
+            console.log(`🔌 Nova conexão estabelecida (${poolKey}) - ID: ${connection.threadId}`)
+        })
+
+        // Criar schema otimizado na primeira conexão
+        try {
+            const conn = await pool.getConnection()
+            try {
+                await createOptimizedSchema(config, conn as sqlConnection)
+            } finally {
+                conn.release()
+            }
+        } catch (error: any) {
+            console.warn(`⚠️ Erro ao criar schema otimizado (${poolKey}):`, error.message)
         }
+
+        console.log(`✅ Pool de conexões criado (${poolKey}) - limite: ${config.connectionLimit || 10} conexões`)
     }
 
-    return conn
+    return pool
 }
 
-async function createOptimizedSchema(config: MySQLConfig) {
+/**
+ * Obtém uma conexão do pool e garante que seja liberada após o uso
+ */
+async function withConnection<T>(
+    config: MySQLConfig,
+    callback: (conn: sqlConnection) => Promise<T>
+): Promise<T> {
+    const poolInstance = await getPool(config)
+    const conn = await poolInstance.getConnection()
+    
+    try {
+        return await callback(conn as sqlConnection)
+    } finally {
+        conn.release() // Sempre libera a conexão de volta ao pool
+    }
+}
+
+async function createOptimizedSchema(config: MySQLConfig, conn: sqlConnection) {
     const tableName = config.tableName || 'auth'
 
     try {
@@ -263,7 +368,7 @@ async function createOptimizedSchema(config: MySQLConfig) {
         }
 
         // Atualizar tabelas existentes para usar LONGTEXT se necessário
-        await updateExistingSchema(keyTables)
+        await updateExistingSchema(keyTables, conn)
 
         console.log('✅ Schema otimizado criado com sucesso')
     } catch (error) {
@@ -271,7 +376,7 @@ async function createOptimizedSchema(config: MySQLConfig) {
     }
 }
 
-async function updateExistingSchema(keyTables: string[]) {
+async function updateExistingSchema(keyTables: string[], conn: sqlConnection) {
     try {
         console.log('🔧 Verificando e atualizando schema existente...')
 
@@ -314,9 +419,11 @@ export const useMySQLAuthStateOptimized = async (config: MySQLConfig): Promise<{
     clearSenderKeyMemory: () => Promise<sqlData>,
     migrateFromLegacy: () => Promise<void>,
     getPerformanceStats: () => Promise<any>,
-    diagnoseSchema: () => Promise<{ issues: string[] }>
+    diagnoseSchema: () => Promise<{ issues: string[] }>,
+    closePool: () => Promise<void>
 }> => {
-    const sqlConn = await connection(config)
+    // Garantir que o pool está criado
+    await getPool(config)
     const tableName = config.tableName || 'auth'
     const retryRequestDelayMs = config.retryRequestDelayMs || 200
     const maxtRetries = config.maxtRetries || 10
@@ -331,16 +438,18 @@ export const useMySQLAuthStateOptimized = async (config: MySQLConfig): Promise<{
 
     const query = async (sql: string, values: any[] = []) => {
         performanceStats.queriesExecuted++
-        for (let x = 0; x < maxtRetries; x++) {
-            try {
-                const [rows] = await sqlConn.query(sql, values)
-                return rows as sqlData
-            } catch (e) {
-                console.warn(`Query failed (attempt ${x + 1}):`, e.message)
-                await new Promise(r => setTimeout(r, retryRequestDelayMs))
+        return await withConnection(config, async (conn) => {
+            for (let x = 0; x < maxtRetries; x++) {
+                try {
+                    const [rows] = await conn.query(sql, values)
+                    return rows as sqlData
+                } catch (e) {
+                    console.warn(`Query failed (attempt ${x + 1}):`, e.message)
+                    await new Promise(r => setTimeout(r, retryRequestDelayMs))
+                }
             }
-        }
-        throw new Error(`Query failed after ${maxtRetries} attempts: ${sql}`)
+            throw new Error(`Query failed after ${maxtRetries} attempts: ${sql}`)
+        })
     }
 
     // ========================================
@@ -930,6 +1039,30 @@ export const useMySQLAuthStateOptimized = async (config: MySQLConfig): Promise<{
         const keyCacheUsage = (keyCache.size / keyCacheMax * 100).toFixed(2)
         const deviceCacheUsage = (deviceCache.size / deviceCacheMax * 100).toFixed(2)
         
+        // Estatísticas do pool de conexões
+        const poolKey = getPoolKey(config)
+        const poolInstance = pools.get(poolKey)
+        let poolStats: any = null
+        
+        if (poolInstance) {
+            try {
+                const poolConfig = poolInstance.config as any
+                poolStats = {
+                    poolKey: poolKey,
+                    connectionLimit: poolConfig.connectionLimit || 10,
+                    queueLimit: poolConfig.queueLimit || 0,
+                    // Nota: mysql2 não expõe diretamente o número de conexões ativas
+                    // mas podemos inferir através do pool
+                    activeConnections: 'N/A', // mysql2 não expõe isso diretamente
+                    idleConnections: 'N/A',
+                    waitingRequests: 'N/A',
+                    totalPools: pools.size // Total de pools ativos
+                }
+            } catch (error) {
+                // Ignorar erros ao obter estatísticas do pool
+            }
+        }
+        
         return {
             ...performanceStats,
             cache: {
@@ -946,6 +1079,7 @@ export const useMySQLAuthStateOptimized = async (config: MySQLConfig): Promise<{
                     warning: deviceCache.size > deviceCacheMax * 0.8 ? '⚠️ Cache acima de 80%' : null
                 }
             },
+            pool: poolStats,
             // Legacy (manter compatibilidade)
             cacheSize: keyCache.size,
             deviceCacheSize: deviceCache.size,
@@ -1036,6 +1170,20 @@ export const useMySQLAuthStateOptimized = async (config: MySQLConfig): Promise<{
         clearSenderKeyMemory,
         migrateFromLegacy,
         getPerformanceStats,
-        diagnoseSchema
+        diagnoseSchema,
+        closePool: async () => {
+            const poolKey = getPoolKey(config)
+            const poolInstance = pools.get(poolKey)
+            
+            if (poolInstance) {
+                try {
+                    await poolInstance.end()
+                    pools.delete(poolKey)
+                    console.log(`✅ Pool de conexões fechado (${poolKey})`)
+                } catch (error: any) {
+                    console.warn(`⚠️ Erro ao fechar pool (${poolKey}):`, error.message)
+                }
+            }
+        }
     }
 }

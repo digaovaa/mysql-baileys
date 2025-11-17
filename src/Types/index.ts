@@ -1,4 +1,4 @@
-import { Connection } from 'mysql2/promise'
+import { Connection, Pool } from 'mysql2/promise'
 
 type Awaitable<T> = T | Promise<T>
 
@@ -135,6 +135,8 @@ export interface sqlConnection extends Connection {
 	}
 }
 
+export interface sqlPool extends Pool {}
+
 export type MySQLConfig = {
 	/* The hostname of the database you are connecting to. (Default: localhost) */
 	host?: string,
@@ -176,6 +178,15 @@ export type MySQLConfig = {
 	
 	/* Maximum number of keys to cache. Useful for multiple simultaneous sessions. (Default: 50000 = ~50-100 sessions) */
 	maxCacheSize?: number
+
+	/* Maximum number of connections in the pool. (Default: 10) */
+	connectionLimit?: number
+
+	/* Maximum idle time for connections in milliseconds. (Default: 60000 = 1 minute) */
+	idleTimeout?: number
+
+	/* Queue limit for waiting connections. (Default: 0 = unlimited) */
+	queueLimit?: number
 }
 
 export type valueReplacer = {
